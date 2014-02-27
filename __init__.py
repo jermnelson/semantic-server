@@ -12,6 +12,7 @@ import datetime
 import json
 import os
 import pymarc
+import re
 import sys
 import urllib, urllib2
 
@@ -19,8 +20,10 @@ from bson.objectid import ObjectId
 from gridfs import GridFS
 from flask import Blueprint, current_app, render_template
 from flask.ext.mongokit import Connection
-#from flask_bibframe.models import CoverArt
+from flask_bibframe.models import CoverArt
 from pymongo.errors import InvalidId, OperationFailure
+
+from ingesters import mods
 
 mongo_datastore = Blueprint('mongo_datastore',
                             __name__,
@@ -73,6 +76,7 @@ def get_cover_art_image(entity_id, db=mongo_client.bibframe):
     if cover_art_grid.exists(image_id):
         return cover_art_grid.get(image_id)
 
+ISBN_RE = re.compile(r'(\b\d{10}\b|\b\d{13}\b)')
 def get_google_thumbnail(isbn, gbs_api_key):
     """Function attempts to harvest thumbnail image from Google Book service
 
@@ -86,6 +90,8 @@ def get_google_thumbnail(isbn, gbs_api_key):
         An empty tuple or a tuple made up of URL and the raw image from Google
         Book Service
     """
+    if ISBN_RE.search(isbn):
+        isbn = ISBN_RE.search(isbn).groups()[0]
     google_book_url = 'https://www.googleapis.com/books/v1/volumes?{0}'
     params = urllib.urlencode({'q': 'isbn:{}'.format(isbn),
                                'key': gbs_api_key})
@@ -135,7 +141,6 @@ def get_item_details(mongo_id, mongo_client=mongo_client):
     # Try BIBFRAME Database
     if len(item) < 1:
         bibframe_db = mongo_client.bibframe
-    print(item)
     if len(item) > 0:
         output = render_template('mongo_datastore/item.html',
                                  item=item)
@@ -171,7 +176,7 @@ def get_marc_records_collection(client):
         if 'marc_records' in getattr(client, db).collection_names():
             return getattr(client, db).marc_records
 
-def insert_cover_art(marc_collection,
+def insert_cover_art(marc_db,
                      bibframe_db,
                      gbs_api_key,
                      limit=50000):
@@ -183,8 +188,8 @@ def insert_cover_art(marc_collection,
     REST API call to Google Books.
 
     Args:
-        marc_collection: MongoDB Collection of MARC21 documents
-        bibframe_db: A MongoDB database of BIBFRAME entities
+        marc_db: MongoDB database of MARC21 document collections
+        bibframe_db: A MongoDB database of BIBFRAME collections
         gbs_api_key: Google Book Service API key
         limit: Number of MARC documents to process, default is 50,000
 
@@ -200,7 +205,7 @@ def insert_cover_art(marc_collection,
     start_count = cover_art_col.count()
     print("Starting CoverArt ingestion {}".format(start_time.isoformat()))
     print("size of CoverArt Collection {}".format(start_count))
-    for i, row in enumerate(marc_collection.marc_records.find({},
+    for i, row in enumerate(marc_db.marc_records.find({},
         {"fields.020.subfields.a": 1}, timeout=False).limit(limit)):
         if not i%100:
             sys.stderr.write(".")
@@ -238,6 +243,21 @@ def insert_cover_art(marc_collection,
                                          (end_time-start_time).seconds/60.0))
     print("Inserted {} CoverArt entitles".format(end_count-start_count))
 
+
+def insert_mods(db, mods_xml, redis_ds):
+    """Inserts a dict MODS XML datastream to MongoDB schema_org collection.
+
+    Args:
+        db: Flask-MongoKit Database
+        mods_xml: Raw MODS XML
+        redis_ds: Redis Datastore
+
+    Returns:
+        None
+
+    Raises:
+        None
+    """
 
 def insert_marc_file(collection, marc_filepath, redis_ds):
     """
