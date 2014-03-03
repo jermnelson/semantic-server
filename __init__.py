@@ -20,10 +20,8 @@ from bson.objectid import ObjectId
 from gridfs import GridFS
 from flask import Blueprint, current_app, render_template
 from flask.ext.mongokit import Connection
-from flask_bibframe.models import CoverArt
+##from flask_bibframe.models import CoverArt
 from pymongo.errors import InvalidId, OperationFailure
-
-from ingesters import mods
 
 mongo_datastore = Blueprint('mongo_datastore',
                             __name__,
