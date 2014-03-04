@@ -18,16 +18,24 @@ import urllib, urllib2
 
 from bson.objectid import ObjectId
 from gridfs import GridFS
-from flask import Blueprint, current_app, render_template
+from flask import Blueprint, Config, current_app, g, render_template
 from flask.ext.mongokit import Connection
 ##from flask_bibframe.models import CoverArt
-from pymongo.errors import InvalidId, OperationFailure
+from pymongo.errors import ConnectionFailure, InvalidId, OperationFailure
 
 mongo_datastore = Blueprint('mongo_datastore',
                             __name__,
                             template_folder='templates')
 
-mongo_client = Connection()
+mongo_config = Config(".")
+mongo_config.from_pyfile('tiger.cfg')
+
+try:
+    mongo_client = Connection(mongo_config.get('MONGODB_HOST'))
+except ConnectionFailure, e:
+    mongo_client = Connection()
+except ConnectionFailure, e:
+    mongo_client = None
 
 def check_for_cover_art(entity_id, db=mongo_client.bibframe):
     """Function checks if the entity has Cover Art
