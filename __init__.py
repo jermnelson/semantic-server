@@ -28,7 +28,7 @@ mongo_datastore = Blueprint('mongo_datastore',
                             template_folder='templates')
 
 mongo_config = Config(".")
-mongo_config.from_pyfile('tiger.cfg')
+mongo_config.from_pyfile('catalog.cfg')
 
 try:
     mongo_client = Connection(mongo_config.get('MONGODB_HOST'))
