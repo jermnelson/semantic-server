@@ -177,6 +177,49 @@ def get_marc(db, marc_id):
     except InvalidId, e:
         return
 
+def get_work(db, work_id):
+    """
+    Function takes MongoDB instance, checks bibframe, schema.org, and MARC data
+    collections and returns dictionary or Null
+
+    Args:
+        db: Flask-MongoKit DB
+        work_id: str
+            Mongo ID of Work record, can take either string of hash or ObjectId
+
+    Returns:
+        dict
+
+    Raises:
+        InvalidId: An error occured with an invalid binary JSON Object ID
+    """
+    # First try bibframe
+    bibframe_db = db.bibframe
+    bibframe_work = bibframe_db.Work.find_one(
+        {'_id': ObjectId(work_id)})
+    if bibframe_work:
+        if '@type' not in bibframe_work:
+            bibframe_work['@type'] = 'bf:Work'
+        return bibframe_work
+    # Next try schema.org
+    schema_org_db = db.schema_org
+    schema_work = schema_org_db.CreativeWork.find_one(
+        {'_id': ObjectId(work_id)})
+    if schema_work:
+        if '@type' not in schema_work:
+            schema_work['@type'] = 'schema:CreativeWork'
+        return schema_work
+    # Finally try with MARC
+    marc_db = get_marc_records_collection(db)
+    marc_work = marc_db.find_one({'_id': ObjectId(work_id)})
+    if marc_work:
+        marc_work['@type'] = 'MARC'
+        return marc_work
+    return
+
+
+
+
 def get_marc_records_collection(client):
     for db in client.database_names():
         if 'marc_records' in getattr(client, db).collection_names():
