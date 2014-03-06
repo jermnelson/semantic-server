@@ -9,12 +9,11 @@
 # Copyright:   (c) Jeremy Nelson, Colorado College 2014
 # Licence:     MIT
 #-------------------------------------------------------------------------------
-
 import xml.etree.ElementTree as etree
 import flask_bibframe.models as bf_models
 
 from bson import ObjectId
-from flask_schema_org import Person, Organization
+from flask_schema_org.models import Person, Organization
 
 from mongo_datastore import generate_record_info
 from rdflib import Namespace
