@@ -13,9 +13,10 @@ import xml.etree.ElementTree as etree
 import flask_bibframe.models as bf_models
 
 from bson import ObjectId
-from flask_schema_org.models import Person, Organization
+from flask_schema_org.models import CreativeWork, Person, Organization
 
-from mongo_datastore import generate_record_info
+from catalog.mongo_datastore import generate_record_info
+
 from rdflib import Namespace
 
 FEDORA_M_NS = Namespace('http://www.fedora.info/definitions/1/0/management/')
@@ -47,20 +48,20 @@ def get_or_add_person(name, client):
                                                  {"_id": 1})
     if existing_person:
         return existing_person.get('_id')
-    name_list = [part.strip() for part in namePart.text.split(",")]
+    name_list = [part.strip() for part in namePart.text.split(",") if part.find('editor') < 0]
     person = Person(givenName=name_list[-1],
                     familyName=name_list[0],
                     name=namePart.text)
     # Ugh about hard-coding these values, should come from config
-    person['recordInfo'] = generate_record_info(
+    person.recordInfo = generate_record_info(
                               u"CoCCC",
                               u'From Colorado College MODS record')
-    person['sameAs'] = []
+    person.sameAs = []
     person_id = schema_org.Person.insert(person.as_dict())
     bf_person.relatedTo = [str(person_id)]
     bf_person_id = bibframe.Person.insert(bf_person.as_dict())
     schema_org.Person.update({"_id": person_id},
-                             {"$push": {'sameAs', str(bf_person_id)}})
+                             {"$push": {'sameAs': str(bf_person_id)}})
     return person_id
 
 

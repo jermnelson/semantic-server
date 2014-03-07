@@ -27,7 +27,10 @@ mongo_datastore = Blueprint('mongo_datastore',
                             __name__,
                             template_folder='templates')
 
-mongo_config = Config(".")
+blueprint_folder = os.path.abspath(os.path.dirname(__file__))
+app_folder = os.path.split(blueprint_folder)[0]
+
+mongo_config = Config(app_folder)
 mongo_config.from_pyfile('catalog.cfg')
 
 try:
