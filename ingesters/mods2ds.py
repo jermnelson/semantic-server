@@ -173,6 +173,30 @@ def add_base(mods, client):
     return output
 
 
+def add_periodical(mods, client):
+    """Takes a MODS etree and adds a Periodical
+    (as proposed http://www.w3.org/community/schemabibex/) to the Mongo
+    Datastore
+
+    Function takes a MODS etree and based on mods:genre value, creates a
+    custom Thesis Schema.org class that is descendent from schema:CreativeWork
+
+    Args:
+        mods: MODS XML etree
+        client: Mongo DB Client
+
+    Returns:
+        ObjectId: Mongo DB ObjectId for the schema.org Thesis
+    """
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    base_mods = add_base(mods, client)
+    periodical = CreativeWork(**base_mods)
+    periodical.additionalType = 'Periodical'
+
+
+
+
 def add_thesis(mods, client):
     """Takes a MODS etree and adds a Thesis to the Mongo Datastore
 
