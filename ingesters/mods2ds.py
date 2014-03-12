@@ -41,14 +41,24 @@ def get_or_add_person(name, client):
     if not name_type.startswith('personal'):
         return
     bf_person = bf_models.Person()
-    namePart = name.find("{{{0}}}namePart".format(MODS_NS))
-    if namePart.text is None:
+    nameParts = name.findall("{{{0}}}namePart".format(MODS_NS))
+    if len(nameParts) == 0:
         return
-    existing_person = schema_org.Person.find_one({"name": namePart.text},
-                                                 {"_id": 1})
-    if existing_person:
-        return existing_person.get('_id')
-    name_list = [part.strip() for part in namePart.text.split(",") if part.find('editor') < 0]
+    elif len(nameParts) == 1:
+        existing_person = schema_org.Person.find_one({"name": nameParts[0].text},
+                                                     {"_id": 1})
+        if existing_person:
+            return existing_person.get('_id')
+        name_list = [part.strip() for part in namePart.text.split(",") if part.find('editor') < 0]
+    else:
+        name_list = []
+        for part in nameParts:
+            if part.attrib.get('type') == 'family':
+                name_list
+
+
+
+
     person = Person(givenName=name_list[-1],
                     familyName=name_list[0],
                     name=namePart.text)
@@ -169,9 +179,23 @@ def add_base(mods, client):
         output['url'] = location_url.text
         if output['url'].startswith("http://hdl.handle.net"):
             instance.hdl = output['url']
-    # dacc.api.getDatastreamHistory('coccc:9357', 'MODS', 'xml')
     return output
 
+
+
+def add_publication_issue(mods, client):
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    base_mods = add_base(mods, client)
+    publication_issue = CreativeWork(**base_mods)
+    publication_issue.additionalType = 'PublicationIssue'
+
+def add_publication_issue(mods, client):
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    base_mods = add_base(mods, client)
+    publication_volume = CreativeWork(**base_mods)
+    publication_volume.additionalType = 'PublicationVolume'
 
 def add_periodical(mods, client):
     """Takes a MODS etree and adds a Periodical
@@ -243,7 +267,22 @@ def add_thesis(mods, client):
             bf_text.dissertationDegree = note.text
 
 
+def insert_mods(db, mods_xml, redis_ds):
+    """Inserts a MODS XML datastream to MongoDB schema_org and bibframe
+    collections.
 
+    Args:
+        db: Flask-MongoKit Database
+        mods_xml: Raw MODS XML
+        redis_ds: Redis Datastore
+
+    Returns:
+        None
+
+    Raises:
+        None
+    """
+    pass
 
 
 

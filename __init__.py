@@ -59,7 +59,8 @@ def check_for_cover_art(entity_id, db=mongo_client.bibframe):
         return False
 
 
-def generate_record_info(content_source, origin_msg):
+def generate_record_info(content_source,
+                         origin_msg):
     return {u'languageOfCataloging': u'http://id.loc.gov/vocabulary/iso639-1/en',
             u'recordContentSource': content_source,
             u'recordCreationDate': datetime.datetime.utcnow().isoformat(),
@@ -296,20 +297,7 @@ def insert_cover_art(marc_db,
     print("Inserted {} CoverArt entitles".format(end_count-start_count))
 
 
-def insert_mods(db, mods_xml, redis_ds):
-    """Inserts a dict MODS XML datastream to MongoDB schema_org collection.
 
-    Args:
-        db: Flask-MongoKit Database
-        mods_xml: Raw MODS XML
-        redis_ds: Redis Datastore
-
-    Returns:
-        None
-
-    Raises:
-        None
-    """
 
 def insert_marc_file(collection, marc_filepath, redis_ds):
     """
@@ -361,7 +349,7 @@ def insert_marc_file(collection, marc_filepath, redis_ds):
 
 
 def __marc_item__(marc_db, mongo_id):
-    """Helper function returns a dictionary of item inform from a MARC Mongo DB
+    """Helper function returns a dictionary of an item from a MARC Mongo DB
 
     Function  iteriates through the various bibliographic and authority
     collections, extracts information for call number, publisher, pages,
