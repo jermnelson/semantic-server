@@ -94,8 +94,6 @@ def add_get_title_authority(authority_marc, client):
         u'From MARC Authority record')
     return bibframe.insert(title_dict.as_dict())
 
-
-
 def add_get_title_bibliographic(bib_marc, client):
     " "
     bibframe = client.bibframe
