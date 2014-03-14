@@ -80,19 +80,31 @@ def add_movie(marc, client):
 def add_get_title_authority(authority_marc, client):
     " "
     bibframe = client.bibframe
-    uniform_title = ''.join(__get_fields_subfields__(['130'], ['a']))
+    uniform_title = ''.join(__get_fields_subfields__(
+        authority_marc,
+        ['130'], ['a']))
+    lccn = ''.join(__get_fields_subfields__(
+        authority_marc,
+        ['010'], ['a'])).replace(" ","")
     title = bibframe.Title.find_one({
         'authorizedAccessPoint': uniform_title})
     if title:
         return title.get('_id')
     title = bf_models.Title(authorizedAccessPoint=uniform_title,
+                            identifier={'lccn': lccn},
                             titleSource=str(authority_marc.get('_id')),
                             titleValue=uniform_title)
+    setattr(title, 'varientLabel', [])
+    for varient_title in __get_fields_subfields__(
+        authority_marc,
+        ['430'],
+        ['a']):
+            title.varientLabel.append(varient_title)
     title_dict = title.as_dict()
     title_dict['recordInfo'] = generate_record_info(
         u'CoCCC',
         u'From MARC Authority record')
-    return bibframe.insert(title_dict.as_dict())
+    return bibframe.Title.insert(title_dict)
 
 def add_get_title_bibliographic(bib_marc, client):
     " "
@@ -112,6 +124,6 @@ def add_get_title_bibliographic(bib_marc, client):
     title_dict['recordInfo'] = generate_record_info(
         u'CoCCC',
         u'From MARC Authority record')
-    return bibframe.insert(title_dict.as_dict())
+    return bibframe.Title.insert(title_dict.as_dict())
 
 
