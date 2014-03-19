@@ -13,7 +13,8 @@ import xml.etree.ElementTree as etree
 import flask_bibframe.models as bf_models
 
 from bson import ObjectId
-from flask_schema_org.models import CreativeWork, Map, Organization, Person
+from flask_schema_org.models import AudioObject, CreativeWork, Map, Organization
+from flask_schema_org.models import Person, Photograph, VideoObject
 
 from catalog.mongo_datastore import generate_record_info
 
@@ -44,6 +45,145 @@ def __set_role__(role_term, object_id, output):
     return output
 
 
+def get_or_add_article(mods, client, record_constants):
+    """Returns id of an existing Article or a new Article
+
+    Args:
+        mods: MODS etree
+        client: Mongo DB Client
+        record_constants: Dictionary of record constants
+
+    Returns:
+        ObjectId: Mongo DB ObjectId for the schema.org Article
+    """
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+
+
+def get_or_add_audio(mods, client, record_constants):
+    """Returns id of an existing AudioObject or a new AudioObject
+
+    Args:
+        mods: MODS etree
+        client: Mongo DB Client
+        record_constants: Dictionary of record constants
+
+    Returns:
+        ObjectId: Mongo DB ObjectId for the schema.org AudioObject
+    """
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
+    existing_audio = schema_org.CreativeWork.find_one(
+        {"@type": 'AudioObject', 'headline': title.text},
+        {'_id': 1})
+    if existing_audio is not None:
+        return existing_audio.get('_id')
+    audio_object = AudioObject(**add_base(mods, client, record_constants))
+    audio_object_id = schema_org.CreativeWork.ingest(audio_object.as_dict())
+    audio = bf_models.Audio(
+        label=title.text,
+        relatedTo=[str(audio_object_id)])
+    return audio_object_id
+
+
+def get_or_add_map(mods, client, record_constants):
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
+    existing_map = schema_org.CreativeWork.find_one(
+        {"@type": "Map",
+         "headline":title.text})
+    if existing_map is not None:
+        return existing_map.get('_id')
+    base_mods = add_base(mods, client, record_constants)
+    map_work = Map(**base_mods)
+    map_dict = map_work.as_dict()
+    map_dict['@type'] = 'Map'
+    map_id = schema_org.CreativeWork.insert(map_dict)
+    cartography = bf_models.Cartography(label=map_dict.get('name',
+                                                map_dict.get('headline')),
+                                        relatedTo=[str(map_id)])
+    setattr(cartography,
+            'recordInfo',
+            generate_record_info(
+                record_constants['source'],
+                record_constants['msg']))
+    cartography_id = bibframe.Work.insert(cartography.as_dict())
+    schema_org.CreativeWork.update({"_id": map_id},
+                                   {"$set": {'sameAs': [str(cartography_id)]}})
+
+    return map_id
+
+
+
+def get_or_add_organization(name, client, record_constants):
+    """Existing organization or adds new Organization
+
+    Args:
+        name: Name string
+        client: Mongo DB Client
+        record_constants: Dictionary of record constants
+
+    Returns:
+        ObjectId: Mongo DB ObjectId for the schema.org Person
+    """
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    existing_org = schema_org.Organization.find_one({"name": name},
+                                                    {"_id": 1})
+    if existing_org:
+        return existing_org.get("_id")
+    organization = Organization(name=name)
+    setattr(organization,
+            'recordInfo',
+            generate_record_info(
+                record_constants.get('source'),
+                record_constants.get('msg')))
+    new_org = schema_org.Organization.insert(organization.as_dict())
+    bf_organization = bf_models.Organization(
+        relatedTo=[str(new_org),],
+        label=name)
+    setattr(bf_organization,
+            'recordInfo',
+            generate_record_info(
+                record_constants.get('source'),
+                record_constants.get('msg')))
+    bf_id = bibframe.Organization.insert(bf_organization.as_dict())
+    schema_org.Organization.update({"_id": new_org},
+                                   {"$set": {"sameAs": [str(bf_id)]}})
+    return new_org
+
+
+def get_or_add_periodical(mods, client, record_constants):
+    """Takes a MODS etree and gets ors adds a Periodical
+
+    Periodical model uses the proposal at
+    http://www.w3.org/community/schemabibex/ to add support for recurring
+    resources in the MongoDatastore
+
+    Args:
+        mods: MODS XML etree
+        client: Mongo DB Client
+        record_constants: Dictionary of Record constants
+
+    Returns:
+        ObjectId: Mongo DB ObjectId for the schema.org Thesis
+    """
+    schema_org = client.schema_org
+    bibframe = client.bibframe
+    title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
+    existing_periodical = schema_org.CreativeWork.find_one(
+        {"@type": 'Periodical',
+         "headline": title.text})
+    if existing_periodical is not None:
+        return existing_periodical.get('_id')
+    base_mods = add_base(mods, client, record_constants)
+    periodical = CreativeWork(**base_mods)
+    periodical_dict = periodical.as_dict()
+    periodical_dict['@type'] = 'Periodical'
+    periodical_id = schema_org.CreativeWork.insert(periodical_dict)
+    return periodical_id
 
 def get_or_add_person(name, client, record_constants):
     """Function retrieves a schema:Person or adds a new schema:Person from MODS
@@ -107,43 +247,68 @@ def get_or_add_person(name, client, record_constants):
                              {"$push": {'sameAs': str(bf_person_id)}})
     return person_id
 
-
-def get_or_add_organization(name, client, record_constants):
-    """Existing organization or adds new Organization
+def get_or_add_photograph(mods, client, record_constants):
+    """Retrives or inserts MODS into MongoDB schema_org and bibframe databases
 
     Args:
-        name: Name string
+        mods: MODS XML etree
         client: Mongo DB Client
-        record_constants: Dictionary of record constants
+        record_constants: Dictionary with constant values for record creation
 
     Returns:
-        ObjectId: Mongo DB ObjectId for the schema.org Person
+        ObjectId: Mongo DB ObjectId for the schema.org Photograph
     """
-    schema_org = client.schema_org
     bibframe = client.bibframe
-    existing_org = schema_org.Organization.find_one({"name": name},
-                                                    {"_id": 1})
-    if existing_org:
-        return existing_org.get("_id")
-    organization = Organization(name=name)
-    setattr(organization,
-            'recordInfo',
-            generate_record_info(
-                record_constants.get('source'),
-                record_constants.get('msg')))
-    new_org = schema_org.Organization.insert(organization.as_dict())
-    bf_organization = bf_models.Organization(
-        relatedTo=str(new_org),
-        label=name)
-    setattr(bf_organization,
-            'recordInfo',
-            generate_record_info(
-                record_constants.get('source'),
-                record_constants.get('msg')))
-    bf_id = bibframe.Organization.insert(bf_organization.as_dict())
-    schema_org.Organization.update({"_id": new_org},
-                                   {"$set": {"sameAs": [str(bf_id)]}})
-    return new_org
+    schema_org = client.schema_org
+    title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
+    existing_photo = schema_org.CreativeWork.find_one(
+        {"@type": 'Photograph', 'headline': title.text})
+    if existing_photo is not None:
+        return existing_photo.get('_id')
+    photograph = Photograph(**add_base(mods, client, record_constants))
+    photograph_dict = photograph.as_dict()
+    photograph_id = schema_org.CreativeWork.insert(photograph_dict)
+    still_image = bf_models.StillImage(
+        label=title.text,
+        relatedTo=[str(photograph_id)])
+    still_image_id = bibframe.Work.insert(still_image.as_dict())
+    instance = bf_models.Instance(instanceOf=str(still_image_id))
+    schema_org.CreativeWork.update(
+        {"_id": photograph_id},
+        {"$set": {'sameAs': [str(still_image_id)]}})
+    return schema_org.get('_id')
+
+
+def get_or_add_video(mods, client, record_constants):
+    """Retrives or inserts MODS into MongoDB schema_org and bibframe databases
+
+    Args:
+        mods: MODS XML etree
+        client: Mongo DB Client
+        record_constants: Dictionary with constant values for record creation
+
+    Returns:
+        ObjectId: Mongo DB ObjectId for the schema.org VideoObject
+    """
+    bibframe = client.bibframe
+    schema_org = client.schema_org
+    title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
+    existing_video = schema_org.CreativeWork.find_one(
+        {"@type": 'VideoObject', 'headline': title.text})
+    if existing_video is not None:
+        return existing_video.get('_id')
+    video_object = VideoObject(**add_base(mods, client, record_constants))
+    video_object_dict = video_object.as_dict()
+    video_id = schema_org.CreativeWork.insert(video_object_dict)
+    moving_image = bf_models.MovingImage(
+        **{'label':title.text,
+           'relatedTo':[str(video_id)]})
+    moving_image_id = bibframe.Work.insert(moving_image.as_dict())
+    instance = bf_models.Instance(instanceOf=str(moving_image_id))
+    schema_org.CreativeWork.update(
+        {"_id": video_id},
+        {"$set": {'sameAs': [str(moving_image_id)]}})
+    return video_id
 
 
 def add_base(mods, client, record_constants):
@@ -187,7 +352,7 @@ def add_base(mods, client, record_constants):
                         record_constants)
             if role.text == 'contributor':
                 output = __set_role__('contributor',
-                                      object_id,
+                                      org_id,
                                       output)
     # Process MODS title
     title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
@@ -207,6 +372,9 @@ def add_base(mods, client, record_constants):
     dateIssued = originInfo.find("{{{0}}}dateIssued".format(MODS_NS))
     if dateIssued is not None:
         output['datePublished'] = dateIssued.text
+    dateCreated = originInfo.find("{{{0}}}dateCreated".format(MODS_NS))
+    if dateCreated is not None:
+        output['dateCreated'] = dateCreated.text
     # Process MODS topics
     topics = mods.findall("{{{0}}}subject/{{{0}}}topic".format(MODS_NS))
     if len(topics) > 0:
@@ -218,32 +386,10 @@ def add_base(mods, client, record_constants):
     location_url = mods.find("{{{0}}}location/{{{0}}}url".format(MODS_NS))
     if location_url is not None:
         output['url'] = location_url.text
-        if output['url'].startswith("http://hdl.handle.net"):
-            instance.hdl = output['url']
     return output
 
 
-def add_map(mods, client, record_constants):
-    schema_org = client.schema_org
-    bibframe = client.bibframe
-    base_mods = add_base(mods, client, record_constants)
-    map_work = Map(**base_mods)
-    map_dict = map_work.as_dict()
-    map_dict['@type'] = 'Map'
-    map_id = schema_org.CreativeWork.insert(map_dict)
-    cartography = bf_models.Cartography(label=map_dict.get('name',
-                                                map_dict.get('headline')),
-                                        relatedTo=[str(map_id)])
-    setattr(cartography,
-            'recordInfo',
-            generate_record_info(
-                record_constants['source'],
-                record_constants['msg']))
-    cartography_id = bibframe.Work.insert(cartography.as_dict())
-    schema_org.CreativeWork.update({"_id": map_id},
-                                   {"$set": {'sameAs': [str(cartography_id)]}})
 
-    return map_id
 
 def add_publication_issue(mods, client, issue_number, record_constants):
     schema_org = client.schema_org
@@ -267,37 +413,6 @@ def add_publication_volume(mods, client, volume, record_constants):
     pub_volume_dict['@type'] = 'PublicationVolume'
     pub_volume_id = schema_org.CreativeWork.insert(pub_volume_dict)
     return pub_volume_id
-
-def add_periodical(mods, client, record_constants):
-    """Takes a MODS etree and adds a Periodical
-    (as proposed http://www.w3.org/community/schemabibex/) to the Mongo
-    Datastore
-
-    Function takes a MODS etree and based on mods:genre value, creates a
-    custom Thesis Schema.org class that is descendent from schema:CreativeWork
-
-    Args:
-        mods: MODS XML etree
-        client: Mongo DB Client
-        record_constants: Dictionary of Record constants
-
-    Returns:
-        ObjectId: Mongo DB ObjectId for the schema.org Thesis
-    """
-    schema_org = client.schema_org
-    bibframe = client.bibframe
-    base_mods = add_base(mods, client, record_constants)
-    periodical = CreativeWork(**base_mods)
-    periodical_dict = periodical.as_dict()
-    periodical_dict['@type'] = 'Periodical'
-    periodical_id = schema_org.CreativeWork.insert(periodical_dict)
-    return periodical_id
-
-
-
-
-
-
 
 
 
@@ -346,6 +461,8 @@ def add_thesis(mods, client):
         if note.attrib['type'] == 'thesis' and attrib.get('displayLabel') == "Degree Name":
             bf_text.dissertationDegree = note.text
     return thesis.save()
+
+
 
 
 
