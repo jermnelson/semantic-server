@@ -276,7 +276,7 @@ def get_or_add_photograph(mods, client, record_constants):
     schema_org.CreativeWork.update(
         {"_id": photograph_id},
         {"$set": {'sameAs': [str(still_image_id)]}})
-    return schema_org.get('_id')
+    return photograph_id
 
 
 def get_or_add_video(mods, client, record_constants):
@@ -375,13 +375,19 @@ def add_base(mods, client, record_constants):
     dateCreated = originInfo.find("{{{0}}}dateCreated".format(MODS_NS))
     if dateCreated is not None:
         output['dateCreated'] = dateCreated.text
-    # Process MODS topics
-    topics = mods.findall("{{{0}}}subject/{{{0}}}topic".format(MODS_NS))
-    if len(topics) > 0:
+    # Process MODS subjects
+    subjects = mods.findall("{{{0}}}subject".format(MODS_NS))
+    if len(subjects) > 0:
         output['keywords'] = []
-        for topic in topics:
-            if topic.text:
-                output['keywords'].append(topic.text)
+        for subject in subjects:
+            first_element = subject.getchildren()[0]
+            if len(first_element.getchildren()) > 0:
+                grand_child = first_element.getchildren()[0]
+                if grand_child.text is not None:
+                    output['keywords'].append(grand_child.text)
+            else:
+                if first_element.text is not None:
+                    output['keywords'].append(first_element.text)
     # Process MODS location
     location_url = mods.find("{{{0}}}location/{{{0}}}url".format(MODS_NS))
     if location_url is not None:
@@ -416,7 +422,7 @@ def add_publication_volume(mods, client, volume, record_constants):
 
 
 
-def add_thesis(mods, client):
+def add_thesis(mods, client, ):
     """Takes a MODS etree and adds a Thesis to the Mongo Datastore
 
     Function takes a MODS etree and based on mods:genre value, creates a
