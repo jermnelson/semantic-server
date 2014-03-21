@@ -13,8 +13,9 @@ import xml.etree.ElementTree as etree
 import flask_bibframe.models as bf_models
 
 from bson import ObjectId
-from flask_schema_org.models import AudioObject, CreativeWork, Map, Organization
-from flask_schema_org.models import Person, Photograph, VideoObject
+from flask_schema_org.models import Article, AudioObject, CreativeWork, Map
+from flask_schema_org.models import Organization, Person, Photograph
+from flask_schema_org.models import VideoObject
 
 from catalog.mongo_datastore import generate_record_info
 
@@ -58,7 +59,15 @@ def get_or_add_article(mods, client, record_constants):
     """
     schema_org = client.schema_org
     bibframe = client.bibframe
-
+    title = mods.find("{{{0}}}titleInfo/{{{0}}}title".format(MODS_NS))
+    existing_article = schema_org.CreativeWork.find_one(
+        {"@type": 'Article', 'headline': title.text},
+        {'_id': 1})
+    if existing_article is not None:
+        return existing_article.get('_id')
+    article = Article(**add_base(mods, client, record_constants))
+    article_id = schema_org.CreativeWork.insert(article.as_dict())
+    return article_id
 
 def get_or_add_audio(mods, client, record_constants):
     """Returns id of an existing AudioObject or a new AudioObject
@@ -80,7 +89,7 @@ def get_or_add_audio(mods, client, record_constants):
     if existing_audio is not None:
         return existing_audio.get('_id')
     audio_object = AudioObject(**add_base(mods, client, record_constants))
-    audio_object_id = schema_org.CreativeWork.ingest(audio_object.as_dict())
+    audio_object_id = schema_org.CreativeWork.insert(audio_object.as_dict())
     audio = bf_models.Audio(
         label=title.text,
         relatedTo=[str(audio_object_id)])
@@ -325,8 +334,9 @@ def add_base(mods, client, record_constants):
     schema_org = client.schema_org
     bibframe = client.bibframe
     instance = bf_models.Instance()
-    output = generate_record_info(record_constants.get('source'),
-                record_constants.get('msg'))
+    output = {'recordInfo': generate_record_info(
+                record_constants.get('source'),
+                record_constants.get('msg'))}
     # Process MODS name
     for name in mods.findall("{{{0}}}name".format(MODS_NS)):
         name_type = name.attrib.get('type', None)
@@ -360,26 +370,28 @@ def add_base(mods, client, record_constants):
         output['headline'] = title.text
     # Process MODS originInfo
     originInfo = mods.find("{{{0}}}originInfo".format(MODS_NS))
-    publisher = originInfo.find("{{{0}}}publisher".format(MODS_NS))
-    if publisher is not None and publisher.text:
-        publisher_id = get_or_add_organization(publisher.text,
-                                               client,
-                                               record_constants)
-        if publisher_id:
-            output['publisher'] = str(publisher_id)
-            output['copyrightHolder'] = [output['publisher'],]
-
-    dateIssued = originInfo.find("{{{0}}}dateIssued".format(MODS_NS))
-    if dateIssued is not None:
-        output['datePublished'] = dateIssued.text
-    dateCreated = originInfo.find("{{{0}}}dateCreated".format(MODS_NS))
-    if dateCreated is not None:
-        output['dateCreated'] = dateCreated.text
+    if originInfo is not None:
+        publisher = originInfo.find("{{{0}}}publisher".format(MODS_NS))
+        if publisher is not None and publisher.text:
+            publisher_id = get_or_add_organization(publisher.text,
+                                                   client,
+                                                   record_constants)
+            if publisher_id:
+                output['publisher'] = str(publisher_id)
+                output['copyrightHolder'] = [output['publisher'],]
+        dateIssued = originInfo.find("{{{0}}}dateIssued".format(MODS_NS))
+        if dateIssued is not None:
+            output['datePublished'] = dateIssued.text
+        dateCreated = originInfo.find("{{{0}}}dateCreated".format(MODS_NS))
+        if dateCreated is not None:
+            output['dateCreated'] = dateCreated.text
     # Process MODS subjects
     subjects = mods.findall("{{{0}}}subject".format(MODS_NS))
     if len(subjects) > 0:
         output['keywords'] = []
         for subject in subjects:
+            if len(subject.getchildren()) < 1:
+                continue
             first_element = subject.getchildren()[0]
             if len(first_element.getchildren()) > 0:
                 grand_child = first_element.getchildren()[0]
@@ -422,7 +434,7 @@ def add_publication_volume(mods, client, volume, record_constants):
 
 
 
-def add_thesis(mods, client, ):
+def add_thesis(mods, client, record_constants):
     """Takes a MODS etree and adds a Thesis to the Mongo Datastore
 
     Function takes a MODS etree and based on mods:genre value, creates a
@@ -437,36 +449,53 @@ def add_thesis(mods, client, ):
     """
     schema_org = client.schema_org
     bibframe = client.bibframe
-    base_mods = add_base(mods, client)
+    base_mods = add_base(mods, client, record_constants)
     thesis = CreativeWork(**base_mods)
     thesis.genre = 'thesis'
+    if thesis.copyrightHolder is None:
+        thesis.copyrightHolder = []
     thesis.copyrightHolder.extend(base_mods['creator'])
-    bf_text = bf_models.Text(recordInfo=generate_record_info(),
+    bf_text = bf_models.Text(recordInfo=generate_record_info(
+                                record_constants['source'],
+                                record_constants['msg']),
                              title=base_mods.get('headline'))
     for name in mods.findall("{{{0}}}name".format(MODS_NS)):
         name_type = name.attrib.get('type')
         role = name.find("{{{0}}}role/{{{0}}}roleTerm".format(MODS_NS))
         if name_type == 'corporate':
-            org_id = get_or_add_organization(name, client)
-            if org_id and role:
+            org_name = name.find("{{{}}}namePart".format(MODS_NS))
+            org_id = get_or_add_organization(
+                        org_name.text,
+                        client, record_constants)
+            if org_id is not None and role is not None:
                 if role.text == 'sponsor':
                     thesis.sourceOrganization = str(org_id)
                     if thesis.publisher:
                         publisher = schema_org.Organization.find_one(
                             {'_id': ObjectId(thesis.publisher)})
-                        if not str(org_id) in publisher.department:
+                        if publisher.get('department') is None:
+                            publisher['department'] = []
+                        if not str(org_id) in publisher.get('department'):
+                            publisher['department'].append(str(org_id))
                             schema_org.Organization.update(
                                 {'_id': publisher.get('_id')},
-                                { '$push': {"department", str(org_id)}})
+                                { '$set': {"department": publisher['department']
+                                }})
     if thesis.publisher:
         bf_organization = bibframe.Organization.find_one(
             {"relatedTo": thesis.publisher},
             {"_id": 1})
         bf_text.dissertationInstitution = str(bf_organization.get('_id'))
     for note in mods.findall("{{{0}}}note".format(MODS_NS)):
-        if note.attrib['type'] == 'thesis' and attrib.get('displayLabel') == "Degree Name":
+        if note.attrib.get('type') == 'thesis' and \
+        note.attrib.get('displayLabel') == "Degree Name":
             bf_text.dissertationDegree = note.text
-    return thesis.save()
+    thesis_id = schema_org.CreativeWork.insert(thesis.as_dict())
+    bf_text.relatedTo = [thesis_id,]
+    bf_text_id = bibframe.Work.insert(bf_text.as_dict())
+    schema_org.CreativeWork.update({"_id": thesis_id},
+                                   {"$set": {'sameAs': [str(bf_text_id)]}})
+    return thesis_id
 
 
 

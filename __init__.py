@@ -147,10 +147,13 @@ def get_item_details(mongo_id, mongo_client=mongo_client):
     # Try Schema.org Database
     if not item:
         schema_db = mongo_client.schema_org
-
+        item = schema_db.CreativeWork.find_one(
+            {"_id": mongo_id})
     # Try BIBFRAME Database
     if len(item) < 1:
         bibframe_db = mongo_client.bibframe
+        item = bibframe_db.Work.find_one(
+            {"_id": mongo_id})
     if len(item) > 0:
         output = render_template('mongo_datastore/item.html',
                                  item=item)
@@ -174,6 +177,8 @@ def get_marc(db, marc_id):
         InvalidId: An error occured with an invalid binary JSON Object ID
     """
     marc_records = get_marc_records_collection(db)
+    if marc_records is None:
+        return
     try:
         if type(marc_id) != ObjectId:
             marc_id = ObjectId(marc_id)
@@ -284,10 +289,6 @@ def insert_cover_art(marc_db,
                         annotationSource=annotate_src_url,
                         assertionDate=datetime.datetime.utcnow().isoformat(),
                         coverArtThumb=image_id)
-                    cover_art_dict = cover_art.as_dict()
-                    cover_art_dict['recordInfo'] = generate_record_info(
-                        "CoCCC",
-                        "Harvested from Google Books")
                     cover_art_col.insert(cover_art.as_dict())
 
     end_time = datetime.datetime.now()
@@ -364,6 +365,8 @@ def __marc_item__(marc_db, mongo_id):
     """
     item = {}
     marc = get_marc(marc_db, mongo_id)
+    if marc is None:
+        return
     for row in marc.get('fields', []):
         tag = row.keys()[0]
         if tag == '020':
