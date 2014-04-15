@@ -404,6 +404,9 @@ def add_base(mods, client, record_constants):
     location_url = mods.find("{{{0}}}location/{{{0}}}url".format(MODS_NS))
     if location_url is not None:
         output['url'] = location_url.text
+        pid = location_url.text.split("/")[-1]
+        if len(pid) > 1:
+            output['identifiers'] = {'pid': pid}
     return output
 
 

@@ -147,13 +147,17 @@ def get_item_details(mongo_id, mongo_client=mongo_client):
     # Try Schema.org Database
     if not item:
         schema_db = mongo_client.schema_org
-        item = schema_db.CreativeWork.find_one(
+        result = schema_db.CreativeWork.find_one(
             {"_id": mongo_id})
+        if not result is None:
+            item = result
     # Try BIBFRAME Database
     if len(item) < 1:
         bibframe_db = mongo_client.bibframe
-        item = bibframe_db.Work.find_one(
+        result = bibframe_db.Work.find_one(
             {"_id": mongo_id})
+        if not result is None:
+            item = result
     if len(item) > 0:
         output = render_template('mongo_datastore/item.html',
                                  item=item)
@@ -400,11 +404,11 @@ def __marc_item__(marc_db, mongo_id):
             for subfield in subfields:
                 if 'a' in subfield:
                     extent = subfield['a']
-                if not 'pages' in item:
+                    if not 'pages' in item:
 ##                    item['extent'] = '{} {}'.format(item['extent'],
 ##                                                    extent)
 ##                else:
-                    item['pages'] = extent
+                        item['pages'] = extent
                 if 'c' in subfield:
                     dimensions = subfield['c']
                     if 'description' in item:
