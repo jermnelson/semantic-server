@@ -12,7 +12,7 @@
   {% endif %}
   {% if 'publisher' in item %}
    <dt>Publisher</dt>
-   <dd>{{ item['publisher'] }}
+   <dd>{{ item['publisher']|get_organization }}
    {% if 'place' in item %}
     {{ item['place'] }}
    {% endif %}
