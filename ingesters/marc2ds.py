@@ -9,6 +9,21 @@
 # Copyright:   (c) Jeremy Nelson, Colorado College 2014
 # Licence:     MIT
 #-------------------------------------------------------------------------------
+import datetime
+import pymarc
+import os
+import subprocess
+import sys
+
+from collections import OrderedDict
+from rdflib import Graph, plugin
+
+from tempfile import NamedTemporaryFile
+try:
+    from lxml import etree
+except ImportError:
+    import xml.etree.ElementTree as etree
+
 import flask_bibframe.models as bf_models
 
 from bson import ObjectId
@@ -125,5 +140,149 @@ def add_get_title_bibliographic(bib_marc, client):
         u'CoCCC',
         u'From MARC Authority record')
     return bibframe.Title.insert(title_dict.as_dict())
+
+
+class MARC21toBIBFRAMEIngester(object):
+    """
+    Class ingests MARC21 records through
+    Library of Congress's MARC2BIBFRAME xquery framework using Saxon
+
+
+    >> mongo_client = mongo_client=MongoClient()
+    >> ingester = MARC21toBIBFRAMEIngester(marc21='test.mrc',
+                                           mongo_client=mongo_client)
+    >> ingester.run()
+    """
+    def __init__(self, **kwargs):
+        """Creates an ingester instance for ingesting MARC21 records through
+        Library of Congress's MARC2BIBFRAME xquery framework using Saxon
+
+        Args:
+            baseuri -- Base URI, defaults to http://catalog/
+            marc21 -- MARC21 file
+            mongo_client -- MongoDB client
+            jar_location -- Complete path to Saxon jar file
+            xqy_location -- Complete path to saxon.xqy from bibframe
+
+        """
+        self.baseuri = kwargs.get('baseuri', 'http://catalog/')
+        self.marc21 = kwargs.get('marc21', None)
+        self.mongo_client = kwargs.get('mongo_client', None)
+        self.saxon_jar_location = kwargs.get('jar_location', None)
+        self.saxon_xqy_location = kwargs.get('xqy_location', None)
+
+    def __convert_fields__(self, record):
+        """Internal method coverts pymarc MARC21 record to MongoDB optimized
+        document for storage
+
+        Args:
+            record - MARC21 record
+
+        Returns:
+            str - MongoDB Identifier
+        """
+        record_dict = record.as_dict()
+        new_fields = OrderedDict()
+        for row in record_dict['fields']:
+            tag = row.keys()[0]
+            contents = self.__convert_subfields__(row.get(tag))
+            if tag in new_fields:
+                if type(new_fields[tag]) == list:
+                    new_fields[tag].append(contents)
+                else:
+                    org_field = new_fields[tag]
+                    new_fields[tag] = [org_field, contents]
+            else:
+                new_fields[tag] = contents
+        record_dict['fields'] = new_fields
+        datastore_id = self.mongo_client.marc.bibliographic.insert(record_dict)
+        return str(datastore_id)
+
+
+    def __convert_subfields__(self, field):
+        """Internal method converts pymarc field's subfields to OrderedDict
+
+        Args:
+            field - dict of MARC21 field
+
+        Returns:
+            dict
+        """
+        new_subfields = OrderedDict()
+        if 'subfields' in field:
+            for row in field['subfields']:
+                subfield = row.keys()[0]
+                value = row.get(subfield)
+                if subfield in new_subfields:
+                    if type(new_subfields[subfield]) == list:
+                        new_subfields[subfield].append(value)
+                    else:
+                        org_subfield = new_subfields[subfield]
+                        new_subfields[subfield] = [org_subfield,
+                                                   value]
+                else:
+                    new_subfields[subfield] = value
+        field['subfields'] = new_subfields
+        return field
+
+    def __xquery_chain__(self, marc_xml):
+        """Internal method takes a MARC XML document, serializes to temp
+        location, runs a Java subprocess with Saxon to convert from MARC XML to
+        a temp RDF XML version and then returns a BIBFRAME graph.
+
+        Args:
+            marc_xml -- Etree XML of MARC
+
+        Returns:
+            graph -- rdflib Graph with parsed xquery
+        """
+        xml_file = NamedTemporaryFile(delete=False)
+        xml_file.write(etree.serialize(marc_xml))
+        xml_file.close()
+        rdf_xml_file = NamedTemporaryFile(delete=False)
+        rdf_xml_file.close()
+        subprocess.call([
+            'java',
+            '-cp',
+            self.saxon_jar_location,
+            self.saxon_xqy_location,
+            'net.sf.saxon.Query',
+            'marcxmluri={}'.format(xml_file.name),
+            'baseuri={}'.format(self.baseuri),
+            '-o:{}'.format(rdf_xml_file.name)])
+        bf_graph = Graph()
+        bf_graph.parse(rdf_xml_file.name, format='xml')
+
+
+
+    def run(self):
+        'Method runs entire tool-chain'
+        marc_reader = pymarc.MARCReader(open(self.marc21),
+            to_unicode=True)
+        start_time = datetime.datetime.utcnow()
+        for i,record in enumerate(marc_reader):
+            if not i%10:
+                sys.stderr.write(".")
+            if not i%100:
+                sys.stderr.write(" {} ".format(i))
+            if not i%1000:
+                sys.stderr.write(" {} seconds".format(
+                    (datetime.datetime.utcnow()-start_time).seconds))
+            marc_id = self.__convert_fields__(record)
+            marc_xml = etree.XML(pymarc.record_to_xml(record, True))
+
+
+
+
+
+
+
+
+
+
+
+
+def bibframe2DataStore(marc21record, client):
+    bibframe = client.bibframe
 
 
