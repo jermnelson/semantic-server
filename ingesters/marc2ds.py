@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from collections import OrderedDict
-from rdflib import Graph, plugin
+from rdflib import Graph, plugin, Literal, URIRef
 
 from tempfile import NamedTemporaryFile
 try:
@@ -153,6 +153,7 @@ class MARC21toBIBFRAMEIngester(object):
                                            mongo_client=mongo_client)
     >> ingester.run()
     """
+
     def __init__(self, **kwargs):
         """Creates an ingester instance for ingesting MARC21 records through
         Library of Congress's MARC2BIBFRAME xquery framework using Saxon
@@ -171,17 +172,54 @@ class MARC21toBIBFRAMEIngester(object):
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
 
-    def __convert_fields__(self, record):
+    def __add_entity__(subject, graph, collection=None):
+        """Internal method takes a URIRef and a graph, expands any URIRefs and
+        then adds entity to datastore. If collection is None, attempts to
+        guess collection.
+
+        Args:
+            subject (rdflib.URIRef): BIBFRAME subject
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            str: String of entity's MongoDB ID
+        """
+        doc = {}
+        if collection is None:
+            pass #! Need to implement
+        # Iterates through predicates and objects for the subject, expanding
+        # some predicates or creating new entities in others
+        for predicate, obj in graph.predicate_objects(subject=subject):
+            if type(predicate) == URIRef:
+                if predicate.startswith('http://bibframe'):
+                    bf_property = predicate.split("/")[-1]
+                    if type(obj) == Literal:
+                        doc[bf_property] = obj.value
+                    elif type(obj) == URIRef:
+                        # Gets literal if object's type is Identifier
+                        object_type = self.__get_type__(obj, graph)
+                        if object_type == 'Identifier':
+                            object_value = graph.value(
+                                subject=obj,
+                                URIRef(u'http://bibframe.org/vocab/identifierValue'))
+                            doc[bf_property] = object_value.value
+
+
+
+                        doc[bf_property]
+        return str(collection.insert(doc))
+
+
+    def __convert_fields_add_datatsore__(self, record_dict):
         """Internal method coverts pymarc MARC21 record to MongoDB optimized
         document for storage
 
         Args:
-            record - MARC21 record
+            record_dict (dict): Dictionary of a MARC21 record
 
         Returns:
-            str - MongoDB Identifier
+            str: MongoDB Identifier
         """
-        record_dict = record.as_dict()
         new_fields = OrderedDict()
         for row in record_dict['fields']:
             tag = row.keys()[0]
@@ -225,16 +263,74 @@ class MARC21toBIBFRAMEIngester(object):
         field['subfields'] = new_subfields
         return field
 
+    def __get_or_add_entity__(self, subject, graph):
+        """Internal method takes a URIRef and a graph, first checking to see
+        if the subject already exists as an entity in the datastore or creates
+        a entity by iterating through the subject's predicates and objects
+
+        Args:
+            subject (rdflib.URIRef): BIBFRAME subject
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            str: String of entity's MongoDB ID
+        """
+        bibframe_type = self.__get_type__(subject, graph)
+        if not bibframe_type in self.mongo_client.bibframe.collection_names():
+            pass #! Need to add logic here, could be a class dict lookup
+        else:
+            collection = get_attr(self.mongo_client.bibframe, bibframe_type)
+        authorized_access_point = graph.value(
+            subject=subject,
+            predicated=URIRef(
+                u'http://bibframe.org/vocab/authorizedAccessPoint'))
+        if authorized_access_point is not None:
+            result = collection.find_one(
+                {"authorizedAccessPoint": authorized_access_point.value},
+                {"_id":1})
+            if result is not None:
+                return str(result.get('_id'))
+        # Doesn't exist in collection, now adds entity
+        return self.__add_entity__(subject, graph, collection)
+
+    def __get_type__(self, subject, graph):
+        bibframe_type_object = graph.value(
+            subject=subject,
+            predicate=URIRef('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'))
+        bibframe_type = bibframe_type_object.split("/")[-1]
+        return bibframe_type
+
+
+
+
+
+
+
+    def __mongodbize_graph__(self, graph, marc_db_id=None):
+        """Internal method takes BIBFRAME rdflib.Graph and ingests into MongoDB
+
+        Args:
+            graph (rdflib.Graph): BIBFRAME graph
+            marc_db_id (str): String of MARC21 MongoDB ID
+
+        Returns:
+            str: String of MongoDB ID of primary BIBFRAME Work
+        """
+        pass
+
+
+
+
     def __xquery_chain__(self, marc_xml):
         """Internal method takes a MARC XML document, serializes to temp
         location, runs a Java subprocess with Saxon to convert from MARC XML to
         a temp RDF XML version and then returns a BIBFRAME graph.
 
         Args:
-            marc_xml -- Etree XML of MARC
+            marc_xml (etree.XML): XML of MARC record
 
         Returns:
-            graph -- rdflib Graph with parsed xquery
+            rdflib.Graph:  BIBFRAME graph of rdf xml from parsed xquery
         """
         xml_file = NamedTemporaryFile(delete=False)
         xml_file.write(etree.serialize(marc_xml))
@@ -245,18 +341,17 @@ class MARC21toBIBFRAMEIngester(object):
             'java',
             '-cp',
             self.saxon_jar_location,
-            self.saxon_xqy_location,
             'net.sf.saxon.Query',
+            self.saxon_xqy_location,
             'marcxmluri={}'.format(xml_file.name),
             'baseuri={}'.format(self.baseuri),
             '-o:{}'.format(rdf_xml_file.name)])
         bf_graph = Graph()
         bf_graph.parse(rdf_xml_file.name, format='xml')
+        return bf_graph
 
 
-
-    def run(self):
-        'Method runs entire tool-chain'
+    def batch(self):
         marc_reader = pymarc.MARCReader(open(self.marc21),
             to_unicode=True)
         start_time = datetime.datetime.utcnow()
@@ -268,21 +363,24 @@ class MARC21toBIBFRAMEIngester(object):
             if not i%1000:
                 sys.stderr.write(" {} seconds".format(
                     (datetime.datetime.utcnow()-start_time).seconds))
-            marc_id = self.__convert_fields__(record)
-            marc_xml = etree.XML(pymarc.record_to_xml(record, True))
+            self.run(record)
+        end_time = datetime.datetime.utcnow()
 
 
 
+    def run(self, record):
+        """Method runs entire tool-chain to ingest a single MARC record into
+        Datastore.
 
+        Args:
+            record (pymarc.Record): MARC21 record
 
+        Returns:
+            list: MongoID
+        """
+        marc_id = self.__convert_fields_add_datatsore__(record.as_dict())
+        marc_xml = etree.XML(pymarc.record_to_xml(record, True))
+        bibframe_graph = self.__xquery_chain__(marc_xml)
 
-
-
-
-
-
-
-def bibframe2DataStore(marc21record, client):
-    bibframe = client.bibframe
 
 
