@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/"
+         xmlns:relators="http://id.loc.gov/vocabulary/relators/"
+         xmlns:madsrdf="http://www.loc.gov/mads/rdf/v1#"
+         xmlns:bf="http://bibframe.org/vocab/"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <bf:Work rdf:about="http://catalog/ebr10846209">
+      <rdf:type rdf:resource="http://bibframe.org/vocab/Text"/>
+      <bf:authorizedAccessPoint>Cooper, Frederick, 1947- Africa in the world : capitalism, empire, nation-state</bf:authorizedAccessPoint>
+      <bf:title>Africa in the world : capitalism, empire, nation-state</bf:title>
+      <bf:workTitle rdf:resource="http://catalog/ebr10846209title6"/>
+      <bf:creator rdf:resource="http://catalog/ebr10846209person7"/>
+      <bf:contributor rdf:resource="http://catalog/ebr10846209organization8"/>
+      <bf:note>"The origins of this book lie in an invitation to deliver the McMillan-Stewart Lectures at the W. E. B. Du Bois Institute of Harvard University. The three lectures that became the book's core chapters were presented in February 2012."</bf:note>
+      <bf:language rdf:resource="http://id.loc.gov/vocabulary/languages/eng"/>
+      <bf:subject rdf:resource="http://catalog/ebr10846209topic11"/>
+      <bf:subject rdf:resource="http://catalog/ebr10846209topic12"/>
+      <bf:subject rdf:resource="http://catalog/ebr10846209place13"/>
+      <bf:subject rdf:resource="http://catalog/ebr10846209place14"/>
+      <bf:subject rdf:resource="http://catalog/ebr10846209place15"/>
+      <bf:subject rdf:resource="http://id.loc.gov/vocabulary/geographicAreas/f"/>
+      <bf:classificationLcc rdf:resource="http://id.loc.gov/authorities/classification/DT29"/>
+      <bf:classification rdf:resource="http://catalog/ebr10846209classification18"/>
+      <bf:reproduction rdf:resource="http://catalog/ebr10846209work19"/>
+      <bf:derivedFrom rdf:resource="http://catalog/ebr10846209ebr10846209"/>
+   </bf:Work>
+   <bf:Work rdf:about="http://catalog/ebr10846209work19">
+      <bf:authorizedAccessPoint>Africa in the world :</bf:authorizedAccessPoint>
+      <bf:title>Africa in the world :</bf:title>
+      <bf:label>Africa in the world :</bf:label>
+   </bf:Work>
+   <bf:Instance rdf:about="http://catalog/ebr10846209instance24">
+      <bf:instanceTitle rdf:resource="http://catalog/ebr10846209title26"/>
+      <bf:publication>
+         <bf:Provider>
+            <bf:providerPlace>
+               <bf:Place>
+                  <bf:label>Palo Alto, Calif.</bf:label>
+               </bf:Place>
+            </bf:providerPlace>
+            <bf:providerDate/>
+         </bf:Provider>
+      </bf:publication>
+      <bf:carrierCategory>Electronic reproduction.</bf:carrierCategory>
+      <bf:note>Available via World Wide Web.</bf:note>
+      <bf:instanceOf rdf:resource="http://catalog/ebr10846209work19"/>
+   </bf:Instance>
+   <bf:Instance rdf:about="http://catalog/ebr10846209instance22">
+      <bf:isbn10 rdf:resource="http://isbn.example.org/0674369300"/>
+      <bf:isbn13 rdf:resource="http://isbn.example.org/9780674369306"/>
+      <bf:title>Africa in the world : capitalism, empire, nation-state (electronic bk.)</bf:title>
+      <bf:title>Africa in the world :capitalism, empire, nation-state / (electronic bk.)</bf:title>
+      <rdf:type rdf:resource="http://bibframe.org/vocab/Electronic"/>
+      <rdf:type rdf:resource="http://bibframe.org/vocab/Monograph"/>
+      <bf:instanceTitle rdf:resource="http://catalog/ebr10846209title30"/>
+      <bf:publication>
+         <bf:Provider>
+            <bf:providerName>
+               <bf:Organization>
+                  <bf:label>Harvard University Press</bf:label>
+               </bf:Organization>
+            </bf:providerName>
+            <bf:providerPlace>
+               <bf:Place>
+                  <bf:label>Cambridge, Massachusetts</bf:label>
+               </bf:Place>
+            </bf:providerPlace>
+            <bf:providerDate>2014.</bf:providerDate>
+         </bf:Provider>
+      </bf:publication>
+      <bf:modeOfIssuance>monographic</bf:modeOfIssuance>
+      <bf:titleStatement>Africa in the world capitalism, empire, nation-state /</bf:titleStatement>
+      <bf:responsibilityStatement>Frederick Cooper.</bf:responsibilityStatement>
+      <bf:note>"The origins of this book lie in an invitation to deliver the McMillan-Stewart Lectures at the W. E. B. Du Bois Institute of Harvard University. The three lectures that became the book's core chapters were presented in February 2012."</bf:note>
+      <bf:accessCondition>Access restricted to subscribing institutions. Individual titles purchased upon selection by the 7th affiliated user.</bf:accessCondition>
+      <bf:supplementaryContentNote>Includes bibliographical references and index.</bf:supplementaryContentNote>
+      <bf:mediaCategory rdf:resource="http://catalog/ebr10846209category38"/>
+      <bf:carrierCategory rdf:resource="http://somecarrier.example.org/online%20resource"/>
+      <bf:derivedFrom rdf:resource="http://catalog/ebr10846209ebr10846209"/>
+      <bf:instanceOf rdf:resource="http://catalog/ebr10846209"/>
+   </bf:Instance>
+   <bf:Instance rdf:about="http://catalog/ebr10846209instance23">
+      <rdf:type rdf:resource="http://bibframe.org/vocab/Electronic"/>
+      <bf:label>Electronic Resource</bf:label>
+      <bf:uri rdf:resource="http://site.ebrary.com/lib/tuttlibrary/docDetail.action?docID=10846209"/>
+      <bf:instanceOf rdf:resource="http://catalog/ebr10846209"/>
+   </bf:Instance>
+   <bf:Annotation rdf:about="http://catalog/ebr10846209annotation21">
+      <bf:derivedFrom rdf:resource="http://catalog/ebr10846209ebr10846209.marcxml.xml"/>
+      <bf:descriptionSource rdf:resource="http://id.loc.gov/vocabulary/organizations/nhccybp"/>
+      <bf:generationProcess>DLC transform-tool:2014-03-21-T13:00:00</bf:generationProcess>
+      <bf:changeDate>2014-03-24T10:24</bf:changeDate>
+      <bf:annotates rdf:resource="http://catalog/ebr10846209"/>
+   </bf:Annotation>
+   <bf:HeldItem rdf:about="http://catalog/ebr10846209helditem42">
+      <bf:label>DT29 .C59 2014eb</bf:label>
+      <bf:shelfMarkLcc>DT29 .C59 2014eb</bf:shelfMarkLcc>
+      <bf:holdingFor rdf:resource="http://catalog/ebr10846209instance22"/>
+   </bf:HeldItem>
+   <bf:Title rdf:about="http://catalog/ebr10846209title6">
+      <bf:titleValue>Africa in the world :</bf:titleValue>
+      <bf:subtitle>capitalism, empire, nation-state /</bf:subtitle>
+   </bf:Title>
+   <bf:Person rdf:about="http://catalog/ebr10846209person7">
+      <bf:label>Cooper, Frederick, 1947-</bf:label>
+      <bf:authorizedAccessPoint>Cooper, Frederick, 1947-</bf:authorizedAccessPoint>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <madsrdf:authoritativeLabel>Cooper, Frederick, 1947-</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Person>
+   <bf:Organization rdf:about="http://catalog/ebr10846209organization8">
+      <bf:label>ebrary, Inc.</bf:label>
+      <bf:authorizedAccessPoint>ebrary, Inc.</bf:authorizedAccessPoint>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <madsrdf:authoritativeLabel>ebrary, Inc.</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Organization>
+   <bf:Topic rdf:about="http://catalog/ebr10846209topic11">
+      <bf:authorizedAccessPoint>Electronic books</bf:authorizedAccessPoint>
+      <bf:label>Electronic books</bf:label>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <rdf:type rdf:resource="http://www.loc.gov/mads/rdf/v1#Topic"/>
+            <madsrdf:authoritativeLabel xml:lang="en">Electronic books</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Topic>
+   <bf:Topic rdf:about="http://catalog/ebr10846209topic12">
+      <bf:authorizedAccessPoint>African diaspora</bf:authorizedAccessPoint>
+      <bf:label>African diaspora</bf:label>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <rdf:type rdf:resource="http://www.loc.gov/mads/rdf/v1#Topic"/>
+            <madsrdf:authoritativeLabel xml:lang="en">African diaspora</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Topic>
+   <bf:Place rdf:about="http://catalog/ebr10846209place13">
+      <bf:authorizedAccessPoint>Africa--History--20th century</bf:authorizedAccessPoint>
+      <bf:label>Africa--History--20th century</bf:label>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <rdf:type rdf:resource="http://www.loc.gov/mads/rdf/v1#ComplexSubject"/>
+            <madsrdf:authoritativeLabel xml:lang="en">Africa--History--20th century</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Place>
+   <bf:Place rdf:about="http://catalog/ebr10846209place14">
+      <bf:authorizedAccessPoint>Africa--Politics and government--20th century</bf:authorizedAccessPoint>
+      <bf:label>Africa--Politics and government--20th century</bf:label>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <rdf:type rdf:resource="http://www.loc.gov/mads/rdf/v1#ComplexSubject"/>
+            <madsrdf:authoritativeLabel xml:lang="en">Africa--Politics and government--20th century</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Place>
+   <bf:Place rdf:about="http://catalog/ebr10846209place15">
+      <bf:authorizedAccessPoint>Africa--Foreign relations--20th century</bf:authorizedAccessPoint>
+      <bf:label>Africa--Foreign relations--20th century</bf:label>
+      <bf:hasAuthority>
+         <madsrdf:Authority>
+            <rdf:type rdf:resource="http://www.loc.gov/mads/rdf/v1#ComplexSubject"/>
+            <madsrdf:authoritativeLabel xml:lang="en">Africa--Foreign relations--20th century</madsrdf:authoritativeLabel>
+         </madsrdf:Authority>
+      </bf:hasAuthority>
+   </bf:Place>
+   <bf:Classification rdf:about="http://catalog/ebr10846209classification18">
+      <bf:classificationScheme>ddc</bf:classificationScheme>
+      <bf:classificationNumber>960.32</bf:classificationNumber>
+      <bf:label>960.32</bf:label>
+      <bf:classificationEdition>full</bf:classificationEdition>
+   </bf:Classification>
+   <bf:Title rdf:about="http://catalog/ebr10846209title26">
+      <bf:label>Africa in the world :</bf:label>
+   </bf:Title>
+   <bf:Title rdf:about="http://catalog/ebr10846209title30">
+      <bf:titleValue>Africa in the world :</bf:titleValue>
+      <bf:subtitle>capitalism, empire, nation-state /</bf:subtitle>
+   </bf:Title>
+   <bf:Category rdf:about="http://catalog/ebr10846209category38">
+      <bf:label>computer</bf:label>
+      <bf:categoryValue>computer</bf:categoryValue>
+      <bf:categoryType>media category</bf:categoryType>
+   </bf:Category>
+</rdf:RDF>

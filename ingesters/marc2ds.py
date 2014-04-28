@@ -178,7 +178,7 @@ class MARC21toBIBFRAMEIngester(object):
         self.graph_ids = {}
 
 
-    def __add_entity__(subject, graph, collection=None):
+    def __add_entity__(self, subject, graph, collection=None):
         """Internal method takes a URIRef and a graph, expands any URIRefs and
         then adds entity to Semantic Server. If collection is None, attempts to
         guess collection.
@@ -191,11 +191,14 @@ class MARC21toBIBFRAMEIngester(object):
             ObjectID: Entity's MongoDB ID
         """
         doc = {}
+        if type(subject) == BNode:
+            return
         if collection is None:
             pass #! Need to implement
         # Iterates through predicates and objects for the subject, expanding
         # some predicates or creating new entities in others
         id_value_uri = u'http://bibframe.org/vocab/identifierValue'
+        id_audience_uri = 'http://bibframe.org/vocab/Audience'
         for predicate, obj in graph.predicate_objects(subject=subject):
             if type(predicate) == URIRef:
                 if predicate.startswith('http://bibframe'):
@@ -205,7 +208,7 @@ class MARC21toBIBFRAMEIngester(object):
                     elif type(obj) == URIRef:
                         # Gets literal if object's type is Identifier
                         object_type = self.__get_type__(obj, graph)
-                        if object_type == 'Identifier':
+                        if object_type == 'Identifier' :
                             object_value = graph.value(
                                 subject=obj,
                                 predicate=URIRef(id_value_uri))
@@ -284,10 +287,11 @@ class MARC21toBIBFRAMEIngester(object):
             str: String of entity's MongoDB ID
         """
         bibframe_type = self.__get_type__(subject, graph)
+        print(bibframe_type, self.mongo_client.bibframe.collection_names())
         if not bibframe_type in self.mongo_client.bibframe.collection_names():
             pass #! Need to add logic here, could be a class dict lookup
         else:
-            collection = get_attr(self.mongo_client.bibframe, bibframe_type)
+            collection = getattr(self.mongo_client.bibframe, bibframe_type)
         authorized_access_point = graph.value(
             subject=subject,
             predicate=URIRef(

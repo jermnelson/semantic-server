@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<record xmlns="http://www.loc.gov/MARC21/slim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd">
+  <leader>03307nam  22005653a 4500</leader>
+  <controlfield tag="001">ebr10846209</controlfield>
+  <controlfield tag="003">NhCcYBP</controlfield>
+  <controlfield tag="005">20140324102444.6</controlfield>
+  <controlfield tag="006">m     o  d        </controlfield>
+  <controlfield tag="007">cr  n        a</controlfield>
+  <controlfield tag="008">140324t20142014maub    ob    001 0 eng d</controlfield>
+  <datafield ind1=" " ind2=" " tag="020">
+    <subfield code="a">0674369300 (electronic bk.)</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="020">
+    <subfield code="a">9780674369306 (electronic bk.)</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="020">
+    <subfield code="z">9780674281394 (hardcover)</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="020">
+    <subfield code="z">067428139X (hardcover)</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="040">
+    <subfield code="a">NhCcYBP</subfield>
+    <subfield code="c">NhCcYBP</subfield>
+    <subfield code="d">CoCCC</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="043">
+    <subfield code="a">f------</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="4" tag="050">
+    <subfield code="a">DT29</subfield>
+    <subfield code="b">.C59 2014eb</subfield>
+  </datafield>
+  <datafield ind1="0" ind2="4" tag="082">
+    <subfield code="a">960.32</subfield>
+    <subfield code="2">23</subfield>
+  </datafield>
+  <datafield ind1="1" ind2=" " tag="100">
+    <subfield code="a">Cooper, Frederick,</subfield>
+    <subfield code="d">1947-</subfield>
+    <subfield code="e">author.</subfield>
+  </datafield>
+  <datafield ind1="1" ind2="0" tag="245">
+    <subfield code="a">Africa in the world :</subfield>
+    <subfield code="b">capitalism, empire, nation-state /</subfield>
+    <subfield code="c">Frederick Cooper.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="1" tag="264">
+    <subfield code="a">Cambridge, Massachusetts :</subfield>
+    <subfield code="b">Harvard University Press,</subfield>
+    <subfield code="c">2014.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="300">
+    <subfield code="a">1 online resource (1 v.)</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="336">
+    <subfield code="a">text</subfield>
+    <subfield code="2">rdacontent.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="337">
+    <subfield code="a">computer</subfield>
+    <subfield code="2">rdamedia.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="338">
+    <subfield code="a">online resource</subfield>
+    <subfield code="2">rdamedia.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="500">
+    <subfield code="a">"The origins of this book lie in an invitation to deliver the McMillan-Stewart Lectures at the W. E. B. Du Bois Institute of Harvard University. The three lectures that became the book's core chapters were presented in February 2012."</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="504">
+    <subfield code="a">Includes bibliographical references and index.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="506">
+    <subfield code="a">Access restricted to subscribing institutions. Individual titles purchased upon selection by the 7th affiliated user.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="533">
+    <subfield code="a">Electronic reproduction.</subfield>
+    <subfield code="b">Palo Alto, Calif.</subfield>
+    <subfield code="n">Available via World Wide Web.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="538">
+    <subfield code="a">System requirements (computers): Browser software; optional ebrary proprietary readers require a Java plug-in (both available on the ebrary site for download at no charge)</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="538">
+    <subfield code="a">System requirements (mobile devices):  May download to &lt;Kindle, Kobo, Nook and Sony Reader&gt;; free app available on the App Store in &lt;English and Spanish&gt; for &lt;iPad, iPod and iPhone&gt;</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="538">
+    <subfield code="a">Text may be read online, with selection copying and a limited quantity of page prints allowed.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="538">
+    <subfield code="a">Users at some libraries must establish an individual no-charge ebrary account, and log in to download the full text or use extended online features. For security, do not use a confidential or important ID and password to log in; create a different username and password.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="538">
+    <subfield code="a">Optional login available using a Facebook username and password.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="540">
+    <subfield code="a">Books may be viewed online or downloaded for noncommercial personal or classroom use only. No derivative use, redistribution or public performance is permitted. Maximum usage allowances -- printing: Fair Use, system-controlled (up to about 20% of the total pages);  copy/paste: Fair Use only.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="588">
+    <subfield code="a">Description based on print version record.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="0" tag="650">
+    <subfield code="a">Electronic books.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="0" tag="650">
+    <subfield code="a">African diaspora.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="0" tag="651">
+    <subfield code="a">Africa</subfield>
+    <subfield code="x">History</subfield>
+    <subfield code="y">20th century.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="0" tag="651">
+    <subfield code="a">Africa</subfield>
+    <subfield code="x">Politics and government</subfield>
+    <subfield code="y">20th century.</subfield>
+  </datafield>
+  <datafield ind1=" " ind2="0" tag="651">
+    <subfield code="a">Africa</subfield>
+    <subfield code="x">Foreign relations</subfield>
+    <subfield code="y">20th century.</subfield>
+  </datafield>
+  <datafield ind1="2" ind2=" " tag="710">
+    <subfield code="a">ebrary, Inc.</subfield>
+  </datafield>
+  <datafield ind1="0" ind2="8" tag="776">
+    <subfield code="c">Original</subfield>
+    <subfield code="z">9780674281394</subfield>
+    <subfield code="z">067428139X</subfield>
+    <subfield code="w">(DLC)  2013031634.</subfield>
+  </datafield>
+  <datafield ind1="4" ind2="0" tag="856">
+    <subfield code="u">http://site.ebrary.com/lib/tuttlibrary/docDetail.action?docID=10846209</subfield>
+    <subfield code="z">View electronic book</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="907">
+    <subfield code="a">.b22841143</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="902">
+    <subfield code="a">140424</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="999">
+    <subfield code="b">1</subfield>
+    <subfield code="c">140424</subfield>
+    <subfield code="d">m</subfield>
+    <subfield code="e">a</subfield>
+    <subfield code="f">e</subfield>
+    <subfield code="g">0</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="994">
+    <subfield code="a">ewwwn</subfield>
+  </datafield>
+  <datafield ind1=" " ind2=" " tag="945">
+    <subfield code="a">DDA ebrary</subfield>
+    <subfield code="g">1</subfield>
+    <subfield code="j">0</subfield>
+    <subfield code="l">ewwwn</subfield>
+    <subfield code="h">0</subfield>
+    <subfield code="o">e</subfield>
+    <subfield code="p">$0.00</subfield>
+    <subfield code="q"> </subfield>
+    <subfield code="r">-</subfield>
+    <subfield code="s">j</subfield>
+    <subfield code="t">32</subfield>
+    <subfield code="u">0</subfield>
+    <subfield code="v">0</subfield>
+    <subfield code="w">0</subfield>
+    <subfield code="x">0</subfield>
+    <subfield code="y">.i22672734</subfield>
+    <subfield code="z">140424</subfield>
+  </datafield>
+</record>
