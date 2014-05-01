@@ -14,6 +14,7 @@ import json
 import pymarc
 import os
 import subprocess
+import shutil
 import sys
 import urllib
 import urllib2
@@ -175,6 +176,7 @@ class MARC21toBIBFRAMEIngester(object):
          'MultipartMonograph': 'Instance',
          'NotatedMovement': 'Work',
          'NotatedMusic': 'Work',
+         'Place': 'Authority',
          'Print': 'Instance',
          'Review': 'Annotation',
          'Serial': 'Instance',
@@ -308,7 +310,7 @@ class MARC21toBIBFRAMEIngester(object):
                                                    value]
                 else:
                     new_subfields[subfield] = value
-        field['subfields'] = new_subfields
+            field['subfields'] = new_subfields
         return field
 
     def __get_collection__(self, subject, graph):
@@ -378,6 +380,9 @@ class MARC21toBIBFRAMEIngester(object):
             str: String of entity's MongoDB ID
         """
         bibframe_type = self.__get_type__(subject, graph)
+        # Filters out certain fields w/specific methods
+        if ["Title"].count(bibframe_type):
+            return
         collection = self.__get_collection__(subject, graph)
         authorized_access_point = graph.value(
             subject=subject,
@@ -422,21 +427,35 @@ class MARC21toBIBFRAMEIngester(object):
         Returns:
             str: String of MongoDB ID of primary BIBFRAME Work
         """
-        instances = self.__process_instances__(graph)
-        titles = self.__process_titles__(graph)
+##        titles = self.__process_titles__(graph)
+##        instances = self.__process_instances__(graph)
         for subject in graph.subjects():
-            if type(subject) == BNode: # For now ignoring all BNode
-                continue
-            if str(subject) in titles: # Already processed titles
-                continue
-            if str(subject) in instances:
-                continue
+            if not str(subject) in self.graph_ids:
+                self.__get_or_add_entity__(subject, graph)
 
 
-
-
-
-
+    def __process_subject__(self, subject, graph):
+        def get_str_or_list(name, value):
+            if name in doc:
+                if type(doc[name]) == list:
+                    doc[name].append(value)
+                else:
+                    doc[name] = [doc[name],]
+            else:
+                doc[name] = value
+        doc = {}
+        for p,o in graph.predicate_objects(subject):
+            if p == MARC21toBIBFRAMEIngester.RDF_TYPE_URI:
+                doc['@type'] = o.split("/")[-1]
+            if str(p).startswith('http://bibframe'):
+                bf_property = p.split("/")[-1]
+                if type(o) == rdflib.Literal:
+                    get_str_or_list(bf_property, str(o))
+                elif [rdflib.BNode, rdflib.URIRef].count(type(o)):
+                    get_str_or_list(bf_property, self.__process_subject__(o))
+        collection = self.__get_collection__(subject, graph)
+        subject_id = collection.insert(doc)
+        return str(subject_id)
 
     def __process_instances__(self, graph):
         """Internal method takes BIBFRAME graph extracts Instances, and returns
@@ -556,20 +575,22 @@ class MARC21toBIBFRAMEIngester(object):
         xml_file.write(etree.tostring(marc_xml))
         xml_file.close()
         xml_filepath = r"{}".format(xml_file.name).replace("\\","/")
-        process = subprocess.Popen(['java',
+        java_command = ['java',
                      '-cp',
                      self.saxon_jar_location,
                      'net.sf.saxon.Query',
                      self.saxon_xqy_location,
                      'marcxmluri={}'.format(xml_filepath),
                      'baseuri={}'.format(self.baseuri),
-                     'serialization=rdfxml'],
+                     'serialization=rdfxml']
+        process = subprocess.Popen(java_command,
                                    stdout=subprocess.PIPE)
         raw_bf_rdf, err = process.communicate()
         bf_graph = Graph()
         bf_graph.parse(data=raw_bf_rdf, format='xml')
+        #shutil.rmtree(xml_file.name)
+        print("after bibframe graph parse")
         return bf_graph
-
 
 
     def batch(self, marc_filepath):
@@ -599,9 +620,10 @@ class MARC21toBIBFRAMEIngester(object):
         Returns:
             list: MongoID
         """
-        marc_id = self.__convert_fields_add_datatsore__(record.as_dict())
+        marc_id = self.__convert_fields_add_datastore__(record.as_dict())
         marc_xml = etree.XML(pymarc.record_to_xml(record, True))
         bibframe_graph = self.__xquery_chain__(marc_xml)
+        self.__mongodbize_graph__(bibframe_graph, marc_id)
 
 
 class MARC21toSchemaOrgIngester(object):

@@ -20,24 +20,28 @@ from bson.objectid import ObjectId
 from gridfs import GridFS
 from flask import Blueprint, Config, current_app, g, render_template
 from flask.ext.mongokit import Connection
+from flask.ext.elasticsearch import ElasticSearch
 ##from flask_bibframe.models import CoverArt
 from pymongo.errors import ConnectionFailure, InvalidId, OperationFailure
 
-mongo_datastore = Blueprint('mongo_datastore',
+semantic_server = Blueprint('semantic_server',
                             __name__,
                             template_folder='templates')
 
 blueprint_folder = os.path.abspath(os.path.dirname(__file__))
 app_folder = os.path.split(blueprint_folder)[0]
 
-mongo_config = Config(app_folder)
-mongo_config.from_pyfile('catalog.cfg')
+semantic_server_config = Config(app_folder)
+semantic_server_config.from_pyfile('catalog.cfg')
 
 try:
-    mongo_client = Connection(mongo_config.get('MONGODB_HOST'))
+    elastic_search = ElasticSearch(semantic_server)
+    mongo_client = Connection(semantic_server_config.get('MONGODB_HOST'))
+
 except ConnectionFailure, e:
     try:
         mongo_client = Connection()
+        elastic_search = ElasticSearch()
     except ConnectionFailure, e:
         mongo_client = None
 
