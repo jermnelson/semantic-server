@@ -10,10 +10,13 @@
 # Licence:     MIT
 #-------------------------------------------------------------------------------
 import datetime
+import json
 import pymarc
 import os
 import subprocess
 import sys
+import urllib
+import urllib2
 
 from collections import OrderedDict
 from pymongo import MongoClient
@@ -88,11 +91,6 @@ def add_movie(marc, client):
     setattr(movie, '@type', 'Movie')
     moving_image = bf_models.MovingImage()
     setattr(moving_image, '@type', 'MovingImage')
-
-
-
-
-
     return ld_ids
 
 def add_get_title_authority(authority_marc, client):
@@ -157,7 +155,38 @@ class MARC21toBIBFRAMEIngester(object):
     >> ingester.run()
     """
     AUTH_ACCESS_PT = URIRef("http://bibframe.org/vocab/authorizedAccessPoint")
+    COLLECTION_CLASSES = {
+         'Archival': 'Instance',
+         'Audio': 'Work',
+         'Cartography': 'Work',
+         'Collection': 'Instance',
+         'Dataset': 'Work',
+         'Electronic': 'Instance',
+         'Family': 'Authority',
+         'HeldMaterial': 'Annotation',
+         'Integrating': 'Instance',
+         'Jurisdiction': 'Authority',
+         'Manuscript': 'Instance',
+         'Meeting': 'Authority',
+         'MixedMaterial': 'Work',
+         'Monograph': 'Instance',
+         'MovingImage': 'Work',
+         'Multimedia': 'Work',
+         'MultipartMonograph': 'Instance',
+         'NotatedMovement': 'Work',
+         'NotatedMusic': 'Work',
+         'Print': 'Instance',
+         'Review': 'Annotation',
+         'Serial': 'Instance',
+         'StillImage': 'Work',
+         'Summary': 'Annotation',
+         'TableOfContents': 'Annotation',
+         'Tactile': 'Instance',
+         'Text': 'Work',
+         'ThreeDimensionalObject': 'Work'}
+
     RDF_TYPE_URI = URIRef(u'http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+
 
     def __init__(self, **kwargs):
         """Creates an ingester instance for ingesting MARC21 records through
@@ -194,11 +223,12 @@ class MARC21toBIBFRAMEIngester(object):
         if type(subject) == BNode:
             return
         if collection is None:
-            pass #! Need to implement
+            collection = self.__get_collection__(subject, graph)
         # Iterates through predicates and objects for the subject, expanding
         # some predicates or creating new entities in others
-        id_value_uri = u'http://bibframe.org/vocab/identifierValue'
+        id_value_uri = 'http://bibframe.org/vocab/identifierValue'
         id_audience_uri = 'http://bibframe.org/vocab/Audience'
+        id_uri_uri = 'http://bibframe.org/vocab/uri'
         for predicate, obj in graph.predicate_objects(subject=subject):
             if type(predicate) == URIRef:
                 if predicate.startswith('http://bibframe'):
@@ -208,15 +238,22 @@ class MARC21toBIBFRAMEIngester(object):
                     elif type(obj) == URIRef:
                         # Gets literal if object's type is Identifier
                         object_type = self.__get_type__(obj, graph)
-                        if object_type == 'Identifier' :
+                        if object_type.startswith('Category'):
+                            doc[bf_property] = self.__get_or_add_category__(
+                                                   obj,
+                                                   graph)
+                        elif object_type.startswith('Identifier'):
                             object_value = graph.value(
                                 subject=obj,
                                 predicate=URIRef(id_value_uri))
                             doc[bf_property] = object_value.value
+
+                        elif str(predicate) == id_uri_uri:
+                            doc[bf_property] = obj.decode()
                         else:
-                            doc[bf_property] = self.__get_or_add_entity__(
+                            doc[bf_property] = str(self.__get_or_add_entity__(
                                 obj,
-                                graph)
+                                graph))
         entity_id = collection.insert(doc)
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
@@ -274,6 +311,60 @@ class MARC21toBIBFRAMEIngester(object):
         field['subfields'] = new_subfields
         return field
 
+    def __get_collection__(self, subject, graph):
+        """Interal method takes a URIRef and a graph, and depending on the rdf
+        type, returns the Mongo DB Collection for the Bibframe entity
+
+        Args:
+            subject (rdflib.URIRef): BIBFRAME subject
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            pymongo.Collection: Collection for the subject
+        """
+        type_of =  self.__get_type__(subject, graph)
+        if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
+            name = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES.get(type_of)
+            collection = getattr(self.mongo_client.bibframe,
+                                 name)
+        else:
+            collection = getattr(self.mongo_client.bibframe,
+                                 type_of)
+        return collection
+
+    def __get_or_add_category__(self, category, graph):
+        """Internal method takes a category subject and a BIBFrame graph and
+        either returns existing category ID or returns a new category
+
+        Args:
+            category (rdflib.URIRef): URIRef of catagory
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            str: String MongoDB ID of category
+        """
+        category_type, category_value = None, None
+        if self.__get_type__(category, graph) != 'Category':
+            return # Not a category returns nothing
+        categoryType = graph.value(
+            subject=category,
+            predicate=URIRef('http://bibframe.org/vocab/categoryType'))
+        if categoryType is not None:
+            category_type = str(categoryType)
+        categoryValue = graph.value(
+            subject=category,
+            predicate=URIRef('http://bibframe.org/vocab/categoryValue'))
+        if categoryValue is not None:
+            category_value = str(categoryValue)
+        # Must match both type and value otherwise create new Category
+        category_id = self.mongo_client.bibframe.Category.find_one({
+            'categoryType': category_type,
+            'categoryValue': category_value},
+            {"_id": 1})
+        if not category_id:
+           category_id = self.__add_entity__(category, graph)
+        return str(category_id)
+
     def __get_or_add_entity__(self, subject, graph):
         """Internal method takes a URIRef and a graph, first checking to see
         if the subject already exists as an entity in the datastore or creates
@@ -287,11 +378,7 @@ class MARC21toBIBFRAMEIngester(object):
             str: String of entity's MongoDB ID
         """
         bibframe_type = self.__get_type__(subject, graph)
-        print(bibframe_type, self.mongo_client.bibframe.collection_names())
-        if not bibframe_type in self.mongo_client.bibframe.collection_names():
-            pass #! Need to add logic here, could be a class dict lookup
-        else:
-            collection = getattr(self.mongo_client.bibframe, bibframe_type)
+        collection = self.__get_collection__(subject, graph)
         authorized_access_point = graph.value(
             subject=subject,
             predicate=URIRef(
@@ -303,14 +390,26 @@ class MARC21toBIBFRAMEIngester(object):
             if result is not None:
                 return str(result.get('_id'))
         # Doesn't exist in collection, now adds entity
-        return self.__add_entity__(subject, graph, collection)
+        return str(self.__add_entity__(subject, graph, collection))
 
     def __get_type__(self, subject, graph):
+        """Internal method takes a subject and a graph, tries to extract
+        type, return BIBFRAME class or most generic Resource type
+
+        Args:
+            subject (rdflib.URIRef): BIBFRAME subject
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            str: BIBFRAME class
+        """
         bibframe_type_object = graph.value(
             subject=subject,
             predicate=URIRef('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'))
-        bibframe_type = bibframe_type_object.split("/")[-1]
-        return bibframe_type
+        if bibframe_type_object is not None:
+            bibframe_type = bibframe_type_object.split("/")[-1]
+            return bibframe_type
+        return 'Resource' # Most general BIBFRAME type if no match is made
 
 
     def __mongodbize_graph__(self, graph, marc_db_id=None):
@@ -323,24 +422,45 @@ class MARC21toBIBFRAMEIngester(object):
         Returns:
             str: String of MongoDB ID of primary BIBFRAME Work
         """
+        instances = self.__process_instances__(graph)
         titles = self.__process_titles__(graph)
         for subject in graph.subjects():
             if type(subject) == BNode: # For now ignoring all BNode
                 continue
+            if str(subject) in titles: # Already processed titles
+                continue
+            if str(subject) in instances:
+                continue
 
-    def __process_instance__(self, graph):
+
+
+
+
+
+
+    def __process_instances__(self, graph):
         """Internal method takes BIBFRAME graph extracts Instances, and returns
-        either existing Mongo ID or list of Mongo IDs from the Semantic Server.
+        a dictionary of graph URIs with Mongo IDs from the Semantic Server.
 
         Args:
             graph (rdflib.Graph): BIBFRAME graph
 
         Returns:
-            ObjectId: If there is only 1 Instance
-            list: List of ObjectIds
+            dict: Dictionary of graph subject URIs mapped to Mongo IDs
         """
-        pass
-
+        output = {}
+        for subject in graph.subjects():
+            subject_type = self.__get_type__(subject, graph)
+            if subject_type == 'Instance':
+                output[str(subject)] = self.__get_or_add_entity__(subject, graph)
+            else:
+                name = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES.get(
+                            subject_type, '')
+                if name.startswith('Instance'):
+                    output[str(subject)] = self.__get_or_add_entity__(
+                                                subject,
+                                                graph)
+        return output
 
 
     def __process_titles__(self, graph):
@@ -352,9 +472,9 @@ class MARC21toBIBFRAMEIngester(object):
             graph (rdflib.Graph): BIBFRAME graph
 
         Returns:
-            list: List of Mongo ObjectIDs for the title
+            dict: Dictionary of Mongo ObjectIDs by title URI
         """
-        output = []
+        output = {}
         def get_title_property(subject, predicate):
             if type(predicate) != URIRef:
                 predicate = URIRef(predicate)
@@ -366,31 +486,55 @@ class MARC21toBIBFRAMEIngester(object):
                     return title_property.value
 
         for title in graph.subjects(
-            predicate = RDF_TYPE_URI,
+            predicate = MARC21toBIBFRAMEIngester.RDF_TYPE_URI,
             object=URIRef(u'http://bibframe.org/vocab/Title')):
                 auth_access_pt = get_title_property(
                                     title,
-                                    AUTH_ACCESS_PT)
+                                    MARC21toBIBFRAMEIngester.AUTH_ACCESS_PT)
                 title_value = get_title_property(
                                 title,
                                 u'http://bibframe.org/vocab/titleValue')
                 sub_title = get_title_property(
                                 title,
                                 u'http://bibframe.org/vocab/subtitle')
-                title_id = self.mongo_client.bibframe.Title.find_one(
-                    { '$or': [
-                        {"authorizedAccessPoint": auth_access_pt},
+                label = get_title_property(
+                            title,
+                            u'http://bibframe.org/vocab/label')
+##                title_result = self.mongo_client.bibframe.Title.find_one(
+##                    { '$or': [
+##                        {"authorizedAccessPoint": auth_access_pt},
+##                        {"$and": [{"titleValue": title_value},
+##                                  {"subtitle": sub_title}]
+##                        }
+##                        ]
+##                    },
+##                    { "_id": 1})
+                # First try authorized Access Point
+                title_result = self.mongo_client.bibframe.Title.find_one(
+                    {"authorizedAccessPoint": auth_access_pt},
+                    {"_id":1})
+                # Second try titleValue and subtitle
+                if title_result is None:
+                    title_result = self.mongo_client.bibframe.Title.find_one(
                         {"$and": [{"titleValue": title_value},
                                   {"subtitle": sub_title}]
-                        }
-                        ]
-                    },
-                    { "_id": 1})
-                if title_id is None:
+                        },
+                        { "_id": 1})
+                # Third try label
+                if title_result is None:
+                    title_result = self.mongo_client.bibframe.Title.find_one(
+                        {"label": label},
+                        {"_id":1})
+                # Finally add Title if no matches
+                if title_result is None:
                     title_id = self.__add_entity__(
                         title,
+                        graph,
                         self.mongo_client.bibframe.Title)
-                output.append(title_id)
+                else:
+                    title_id = title_result.get('_id')
+                output[str(title)] =  title_id
+
         return output
 
 
@@ -458,6 +602,75 @@ class MARC21toBIBFRAMEIngester(object):
         marc_id = self.__convert_fields_add_datatsore__(record.as_dict())
         marc_xml = etree.XML(pymarc.record_to_xml(record, True))
         bibframe_graph = self.__xquery_chain__(marc_xml)
+
+
+class MARC21toSchemaOrgIngester(object):
+    """
+    Class ingests MARC21 records through OCLC xISBN and other web services to
+    extract schema.org metadata based on the ISBN or other identifiers into
+    Catalog Pull Platform's Semantic Server.
+
+    >> mongo_client = mongo_client=MongoClient()
+    >> ingester = MARC21toSchemaOrgIngester(marc21='test.mrc',
+                                            mongo_client=mongo_client)
+    >> ingester.run()
+    """
+    OCLC_XISBN_BASE = 'http://xisbn.worldcat.org/webservices/xid/'
+    OCLC_EXP_BASE = 'http://experiment.worldcat.org/entity/work/data/'
+    COLLECTION_CLASSES = {}
+
+    def __init__(self, **kwargs):
+        self.mongo_client = kwargs.get('mongo_client', MongoClient())
+
+    def __get_oclc_owi__(self, oclcnum):
+        params = {
+            'fl': '*',
+            'format': 'json',
+            'method': 'getMetadata'}
+        url = urllib2.urlparse.urljoin(
+                 MARC21toSchemaOrgIngester.OCLC_XISBN_BASE,
+                 'oclcnum/')
+        url = urllib2.urlparse.urljoin(url, str(oclcnum))
+        oclc_json = json.load(urllib2.urlopen(
+                                  url,
+                                  data=urllib.urlencode(params)))
+        owi = None
+        for row in oclc_json.get('list'):
+            if 'owi' in row:
+                owi = row.get('owi')
+                break
+        if len(owi) == 1:
+            return owi[0]
+        else:
+            return owi # Returns a list
+
+    def __process_owi__(self, owi):
+        if type(owi) == str:
+            owi = owi.replace("owi", '') # Remove owi prefix
+        url = urllib2.urlparse.urljoin(
+            MARC21toSchemaOrgIngester.OCLC_EXP_BASE,
+            "{}.jsonls".format(owi))
+        owi_json = jsons.load(urllib2.urlopen(url))
+
+
+
+
+    def batch(self, marc_filename):
+        pass
+
+
+    def ingest(self, record):
+        """Method runs entire tool-chain to ingest a single MARC record into
+        Semantic Server.
+
+        Args:
+            record (pymarc.Record): MARC21 record
+
+        Returns:
+            list: Listing of MongoID
+        """
+        pass
+
 
 
 

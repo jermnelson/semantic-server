@@ -36,9 +36,10 @@ mongo_config.from_pyfile('catalog.cfg')
 try:
     mongo_client = Connection(mongo_config.get('MONGODB_HOST'))
 except ConnectionFailure, e:
-    mongo_client = Connection()
-except ConnectionFailure, e:
-    mongo_client = None
+    try:
+        mongo_client = Connection()
+    except ConnectionFailure, e:
+        mongo_client = None
 
 def check_for_cover_art(entity_id, db=mongo_client.bibframe):
     """Function checks if the entity has Cover Art
