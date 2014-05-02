@@ -34,9 +34,7 @@ import flask_bibframe.models as bf_models
 from bson import ObjectId
 import flask_schema_org.models as schema_models
 
-sys.path.append("E:/tiger-catalog/")
-
-from catalog.mongo_datastore import generate_record_info
+from __init__ import generate_record_info
 
 
 def __get_fields_subfields__(marc_rec,
@@ -66,10 +64,7 @@ def __get_basic__(marc):
     """
     output = {}
     output['name'] = __get_fields_subfields__(marc, ['245'], ['a', 'b'], False)
-
-
     return output
-
 
 
 
@@ -144,7 +139,7 @@ def add_get_title_bibliographic(bib_marc, client):
     return bibframe.Title.insert(title_dict.as_dict())
 
 
-class MARC21toBIBFRAMEIngester(object):
+class MARC21toBIBFRAMEIngester(Ingester):
     """
     Class ingests MARC21 records through
     Library of Congress's MARC2BIBFRAME xquery framework using Saxon
@@ -455,6 +450,7 @@ class MARC21toBIBFRAMEIngester(object):
                     get_str_or_list(bf_property, self.__process_subject__(o))
         collection = self.__get_collection__(subject, graph)
         subject_id = collection.insert(doc)
+        self.graph_ids[str(subject)] = subject_id
         return str(subject_id)
 
     def __process_instances__(self, graph):

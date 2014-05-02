@@ -64,12 +64,7 @@ def check_for_cover_art(entity_id, db=mongo_client.bibframe):
         return False
 
 
-def generate_record_info(content_source,
-                         origin_msg):
-    return {u'languageOfCataloging': u'http://id.loc.gov/vocabulary/iso639-1/en',
-            u'recordContentSource': content_source,
-            u'recordCreationDate': datetime.datetime.utcnow().isoformat(),
-            u'recordOrigin': origin_msg}
+
 
 def get_cover_art_image(entity_id, db=mongo_client.bibframe):
     """Function returns the cover art image of an entity
