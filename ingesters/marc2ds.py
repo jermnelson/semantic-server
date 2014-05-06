@@ -139,7 +139,7 @@ def add_get_title_bibliographic(bib_marc, client):
     return bibframe.Title.insert(title_dict.as_dict())
 
 
-class MARC21toBIBFRAMEIngester(Ingester):
+class MARC21toBIBFRAMEIngester(object):
     """
     Class ingests MARC21 records through
     Library of Congress's MARC2BIBFRAME xquery framework using Saxon
@@ -202,6 +202,7 @@ class MARC21toBIBFRAMEIngester(Ingester):
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
         self.graph_ids = {}
+        self.language_labels = {}
 
 
     def __add_entity__(self, subject, graph, collection=None):
@@ -216,9 +217,18 @@ class MARC21toBIBFRAMEIngester(Ingester):
         Returns:
             ObjectID: Entity's MongoDB ID
         """
-        doc = {}
-        if type(subject) == BNode:
-            return
+        def add_or_extend_property(name, value):
+            if name in doc:
+                if type(doc[name]) != list:
+                    doc[name]= [doc[name], value]
+                else:
+                    if value not in doc[name]:
+                        doc[name].append(value)
+            else:
+                doc[name] = value
+
+        doc = {'@id': str(subject),
+               '@type': []}
         if collection is None:
             collection = self.__get_collection__(subject, graph)
         # Iterates through predicates and objects for the subject, expanding
@@ -226,6 +236,7 @@ class MARC21toBIBFRAMEIngester(Ingester):
         id_value_uri = 'http://bibframe.org/vocab/identifierValue'
         id_audience_uri = 'http://bibframe.org/vocab/Audience'
         id_uri_uri = 'http://bibframe.org/vocab/uri'
+        doc['@type'].append(self.__get_type__(subject, graph))
         for predicate, obj in graph.predicate_objects(subject=subject):
             if type(predicate) == URIRef:
                 if predicate.startswith('http://bibframe'):
@@ -235,22 +246,57 @@ class MARC21toBIBFRAMEIngester(Ingester):
                     elif type(obj) == URIRef:
                         # Gets literal if object's type is Identifier
                         object_type = self.__get_type__(obj, graph)
+
                         if object_type.startswith('Category'):
-                            doc[bf_property] = self.__get_or_add_category__(
-                                                   obj,
-                                                   graph)
+                            add_or_extend_property(
+                                bf_property,
+                                self.__get_or_add_category__(
+                                    obj,
+                                    graph))
+                        elif object_type.lower().startswith('classification'):
+                            expanded_class = self.__expand_classification__(
+                                    classification=obj,
+                                    graph=graph)
+                            class_key = expanded_class.keys()[0]
+                            if bf_property in doc:
+                                doc[bf_property][class_key] = expanded_class[
+                                    class_key]
+                            else:
+                                doc[bf_property] = {
+                                    class_key: expanded_class.get(class_key)}
+                        elif bf_property.startswith('classification'):
+                            if str(obj).startswith('http://id.loc.gov'):
+                                # Get last part of id.loc.gov (may not reference
+                                # anything
+
+                                add_or_extend_property(
+                                    bf_property,
+                                    obj.split("/")[-1])
                         elif object_type.startswith('Identifier'):
                             object_value = graph.value(
                                 subject=obj,
                                 predicate=URIRef(id_value_uri))
-                            doc[bf_property] = object_value.value
-
+                            add_or_extend_property(
+                                bf_property,
+                                object_value.value)
+                        elif bf_property.startswith("isbn"):
+                            add_or_extend_property(
+                                bf_property,
+                                obj.split("/")[-1])
+                        elif bf_property.startswith('language'):
+                            add_or_extend_property(
+                                bf_property,
+                                self.__process_language__(obj))
                         elif str(predicate) == id_uri_uri:
-                            doc[bf_property] = obj.decode()
+                            add_or_extend_property(bf_property, obj.decode())
                         else:
-                            doc[bf_property] = str(self.__get_or_add_entity__(
-                                obj,
-                                graph))
+                            add_or_extend_property(
+                                bf_property,
+                                str(self.__get_or_add_entity__(
+                                    obj,
+                                    graph)))
+
+
         entity_id = collection.insert(doc)
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
@@ -307,6 +353,35 @@ class MARC21toBIBFRAMEIngester(Ingester):
                     new_subfields[subfield] = value
             field['subfields'] = new_subfields
         return field
+
+    def __expand_classification__(self, classification, graph):
+        """Internal method takes a classification subject and expands the
+        graph into a dictionary.
+
+        Args:
+            classification (rdflib.URIRef|rdflib.BNode): BIBFRAME subject
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            dict: A dictionary of classification properties
+        """
+        output = {}
+        schema_uri = URIRef('http://bibframe.org/vocab/classificationScheme')
+        schema = graph.value(
+            subject=classification,
+            predicate=schema_uri)
+        if schema is not None:
+            schema_val = str(schema)
+            output[schema_val] = {'classificationScheme': schema_val}
+        else:
+            schema_val = str(classification)
+            output[schema_val] = {}
+        for pred, obj in graph.predicate_objects(subject=classification):
+            if pred == schema_uri or pred == self.RDF_TYPE_URI:
+                continue
+            output[schema_val][pred.split("/")[-1]] = str(obj)
+        return output
+
 
     def __get_collection__(self, subject, graph):
         """Interal method takes a URIRef and a graph, and depending on the rdf
@@ -377,8 +452,11 @@ class MARC21toBIBFRAMEIngester(Ingester):
         bibframe_type = self.__get_type__(subject, graph)
         # Filters out certain fields w/specific methods
         if ["Title"].count(bibframe_type):
-            return
+            return self.__process_title__(subject, graph)
         collection = self.__get_collection__(subject, graph)
+        result = collection.find_one(
+                    {"@id": str(subject)},
+                    {"_id"})
         authorized_access_point = graph.value(
             subject=subject,
             predicate=URIRef(
@@ -387,8 +465,8 @@ class MARC21toBIBFRAMEIngester(Ingester):
             result = collection.find_one(
                 {"authorizedAccessPoint": authorized_access_point.value},
                 {"_id":1})
-            if result is not None:
-                return str(result.get('_id'))
+        if result is not None:
+            return str(result.get('_id'))
         # Doesn't exist in collection, now adds entity
         return str(self.__add_entity__(subject, graph, collection))
 
@@ -477,6 +555,88 @@ class MARC21toBIBFRAMEIngester(Ingester):
                                                 graph)
         return output
 
+    def __process_language__(self, language):
+        """Internal method takes a language URIRef, attempts retrival of the
+        language label.
+
+        Args:
+            language (rdflib.URIRef): Language URIRef
+
+        Returns:
+            dict: Dictionary with uri and label
+        """
+        authoritativeLabel = "http://www.loc.gov/mads/rdf/v1#authoritativeLabel"
+        uri = str(language)
+        output = {'@id': uri}
+        if uri in self.language_labels:
+            return self.language_labels.get(uri)
+        lang_json = json.load(urllib2.urlopen("{}.json".format(uri)))
+        if lang_json is not None:
+            for lang in lang_json[0][authoritativeLabel]:
+                if lang.get('@language','').startswith('en'):
+                    output['label'] = lang['@value']
+        self.language_labels[uri] = output
+        return output
+
+
+    def __process_title__(self, title, graph):
+        """Internal method takes title subject and a BIBFRAME graph and either
+        returns an existing title or adds the title to the Semantic Server
+
+        Args:
+            graph (rdflib.Graph): BIBFRAME graph
+
+        Returns:
+            str: String of MongoDB ID of title
+        """
+        def get_title_property(subject, predicate):
+            if type(predicate) != URIRef:
+                predicate = URIRef(predicate)
+            title_property = graph.value(
+                                subject=subject,
+                                predicate=predicate)
+            if title_property is not None:
+                if type(title_property) == Literal:
+                    return title_property.value
+        auth_access_pt = get_title_property(
+            title,
+            MARC21toBIBFRAMEIngester.AUTH_ACCESS_PT)
+        title_value = get_title_property(
+                        title,
+                        'http://bibframe.org/vocab/titleValue')
+        sub_title = get_title_property(
+                        title,
+                        'http://bibframe.org/vocab/subtitle')
+        label = get_title_property(
+                    title,
+                    'http://bibframe.org/vocab/label')
+
+        # First try authorized Access Point
+        title_result = self.mongo_client.bibframe.Title.find_one(
+            {"authorizedAccessPoint": auth_access_pt},
+            {"_id":1})
+        # Second try titleValue and subtitle
+        if title_result is None:
+            title_result = self.mongo_client.bibframe.Title.find_one(
+                {"$and": [{"titleValue": title_value},
+                          {"subtitle": sub_title}]
+                },
+                { "_id": 1})
+        # Third try label
+        if title_result is None:
+            title_result = self.mongo_client.bibframe.Title.find_one(
+                {"label": label},
+                {"_id":1})
+        # Finally add Title if no matches
+        if title_result is None:
+            title_id = self.__add_entity__(
+                title,
+                graph,
+                self.mongo_client.bibframe.Title)
+        else:
+            title_id = title_result.get('_id')
+        return title_id
+
 
     def __process_titles__(self, graph):
         """Internal method takes BIBFRAME rdflib graph, extracts titles and
@@ -490,31 +650,14 @@ class MARC21toBIBFRAMEIngester(Ingester):
             dict: Dictionary of Mongo ObjectIDs by title URI
         """
         output = {}
-        def get_title_property(subject, predicate):
-            if type(predicate) != URIRef:
-                predicate = URIRef(predicate)
-            title_property = graph.value(
-                                subject=subject,
-                                predicate=predicate)
-            if title_property is not None:
-                if type(title_property) == Literal:
-                    return title_property.value
+
 
         for title in graph.subjects(
             predicate = MARC21toBIBFRAMEIngester.RDF_TYPE_URI,
             object=URIRef(u'http://bibframe.org/vocab/Title')):
-                auth_access_pt = get_title_property(
-                                    title,
-                                    MARC21toBIBFRAMEIngester.AUTH_ACCESS_PT)
-                title_value = get_title_property(
-                                title,
-                                u'http://bibframe.org/vocab/titleValue')
-                sub_title = get_title_property(
-                                title,
-                                u'http://bibframe.org/vocab/subtitle')
-                label = get_title_property(
-                            title,
-                            u'http://bibframe.org/vocab/label')
+                 output[str(title)] = self.__process_title__(title, graph)
+
+
 ##                title_result = self.mongo_client.bibframe.Title.find_one(
 ##                    { '$or': [
 ##                        {"authorizedAccessPoint": auth_access_pt},
@@ -524,32 +667,6 @@ class MARC21toBIBFRAMEIngester(Ingester):
 ##                        ]
 ##                    },
 ##                    { "_id": 1})
-                # First try authorized Access Point
-                title_result = self.mongo_client.bibframe.Title.find_one(
-                    {"authorizedAccessPoint": auth_access_pt},
-                    {"_id":1})
-                # Second try titleValue and subtitle
-                if title_result is None:
-                    title_result = self.mongo_client.bibframe.Title.find_one(
-                        {"$and": [{"titleValue": title_value},
-                                  {"subtitle": sub_title}]
-                        },
-                        { "_id": 1})
-                # Third try label
-                if title_result is None:
-                    title_result = self.mongo_client.bibframe.Title.find_one(
-                        {"label": label},
-                        {"_id":1})
-                # Finally add Title if no matches
-                if title_result is None:
-                    title_id = self.__add_entity__(
-                        title,
-                        graph,
-                        self.mongo_client.bibframe.Title)
-                else:
-                    title_id = title_result.get('_id')
-                output[str(title)] =  title_id
-
         return output
 
 
@@ -568,7 +685,9 @@ class MARC21toBIBFRAMEIngester(Ingester):
             rdflib.Graph:  BIBFRAME graph of rdf xml from parsed xquery
         """
         xml_file = NamedTemporaryFile(delete=False)
-        xml_file.write(etree.tostring(marc_xml))
+        xml_file.write(etree.tostring(marc_xml,
+                                      xml_declaration=True,
+                                      encoding='UTF-8'))
         xml_file.close()
         xml_filepath = r"{}".format(xml_file.name).replace("\\","/")
         java_command = ['java',
@@ -584,8 +703,7 @@ class MARC21toBIBFRAMEIngester(Ingester):
         raw_bf_rdf, err = process.communicate()
         bf_graph = Graph()
         bf_graph.parse(data=raw_bf_rdf, format='xml')
-        #shutil.rmtree(xml_file.name)
-        print("after bibframe graph parse")
+        os.remove(xml_file.name)
         return bf_graph
 
 
@@ -617,7 +735,7 @@ class MARC21toBIBFRAMEIngester(Ingester):
             list: MongoID
         """
         marc_id = self.__convert_fields_add_datastore__(record.as_dict())
-        marc_xml = etree.XML(pymarc.record_to_xml(record, True))
+        marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
         bibframe_graph = self.__xquery_chain__(marc_xml)
         self.__mongodbize_graph__(bibframe_graph, marc_id)
 

@@ -16,11 +16,12 @@ import tempfile
 import unittest
 from bson import ObjectId
 from pymongo import MongoClient
-sys.path.append("E:/tiger-catalog/")
-from catalog.mongo_datastore.ingesters.marc2ds import MARC21toBIBFRAMEIngester
-from catalog.mongo_datastore.ingesters.marc2ds import MARC21toSchemaOrgIngester
+sys.path.append("E:/semantic-server/")
+from ingesters.marc2ds import MARC21toBIBFRAMEIngester
+from ingesters.marc2ds import MARC21toSchemaOrgIngester
 
-MONGO_TEST_PORT = 27100
+
+MONGO_TEST_PORT = 27018
 
 class TestMARC21toBIBFRAMEIngester(unittest.TestCase):
 
@@ -64,6 +65,22 @@ class TestMARC21toBIBFRAMEIngester(unittest.TestCase):
         self.assertEquals(
             new245.get('subfields').get('b'),
             u'from November 30, 1917to November 30, 1918.')
+
+    def test__expand_classification__(self):
+        classification = self.africa_graph.value(
+            predicate=MARC21toBIBFRAMEIngester.RDF_TYPE_URI,
+            object=rdflib.URIRef(u'http://bibframe.org/vocab/Classification'))
+        self.assert_(classification)
+        output = self.ingester.__expand_classification__(
+            classification,
+            self.africa_graph)
+        self.assertEquals(output['ddc']['label'],
+                          '960.32')
+        self.assertEquals(output['ddc']['classificationEdition'],
+                          'full')
+        self.assertEquals(output['ddc']['classificationNumber'],
+                          '960.32')
+
 
     def test__get_collection__(self):
         work = rdflib.URIRef('http://catalog/ebr10846209')
@@ -115,6 +132,16 @@ class TestMARC21toBIBFRAMEIngester(unittest.TestCase):
                                                        self.africa_graph)
         self.assertEquals(work_id, work2_id)
 
+    def test__process_language__(self):
+        output = self.ingester.__process_language__(
+            rdflib.URIRef("http://id.loc.gov/vocabulary/languages/eng"))
+        self.assertEquals(
+            output.get('label'),
+            'English')
+        self.assertEqual(
+            output,
+            self.ingester.language_labels.get(
+                "http://id.loc.gov/vocabulary/languages/eng"))
 
     def test__process_titles__(self):
         titles = self.ingester.__process_titles__(self.africa_graph)
