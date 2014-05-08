@@ -64,13 +64,20 @@ class Entity(Resource):
 
     def get(self, entity_type, entity_id):
         # First try Redis Cache
-        if redis_ds.exists('result-cache:{}'.format(entity_id)):
-            return {work_id: redis_ds.get('result-cache:{}'.format(entity_id))}
+        try:
+            redis_key = 'result-cache:{}'.format(entity_id)
+            if redis_ds.exists(redis_key):
+                return {work_id: redis_ds.get(redis_key)}
+        except redis.ConnectionError, e:
+            # Redis not available
+            pass
         collection = self.__get_collection__(entity_type)
-        entity = collection.find_one({"_id": entity_id})
-        if entity is not None:
-            return { entity_id: entity}
-        return abort(404)
+        entity = collection.find_one({"_id": ObjectId(entity_id)})
+        if entity is None:
+            return abort(404)
+        else:
+            entity['mongo-id'] = str(entity.pop("_id"))
+            return {entity_id: entity}
 
 
 class Work(Entity):
@@ -93,7 +100,9 @@ api.add_resource(Entity, '/<string:entity_type>/<string:entity_id>')
 
 
 def main():
-    catalog.run(debug=True)
+    host = '0.0.0.0'
+    catalog.run(debug=True,
+                host=host)
 
 if __name__ == '__main__':
     main()

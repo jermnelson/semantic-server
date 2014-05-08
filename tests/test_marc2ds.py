@@ -143,6 +143,26 @@ class TestMARC21toBIBFRAMEIngester(unittest.TestCase):
             self.ingester.language_labels.get(
                 "http://id.loc.gov/vocabulary/languages/eng"))
 
+    def test__process_title__(self):
+        title_one = rdflib.BNode()
+        self.africa_graph.add((
+            title_one,
+            self.ingester.RDF_TYPE_URI,
+            rdflib.URIRef('http://bibframe.org/vocab/Title')))
+        self.africa_graph.add((
+            title_one,
+            rdflib.URIRef('http://bibframe.org/vocab/titleValue'),
+            rdflib.Literal("Heart of Darkness")
+            ))
+        title_one_id = self.ingester.__process_title__(
+            title_one,
+            self.africa_graph)
+        self.assertEquals(type(title_one_id), ObjectId)
+        self.assertEquals(title_one_id,
+            self.ingester.__process_title__(
+                title_one,
+                self.africa_graph))
+
     def test__process_titles__(self):
         titles = self.ingester.__process_titles__(self.africa_graph)
         title = rdflib.URIRef('http://catalog/ebr10846209title30')

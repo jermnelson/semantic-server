@@ -198,7 +198,7 @@ class MARC21toBIBFRAMEIngester(object):
 
         """
         self.baseuri = kwargs.get('baseuri', 'http://catalog/')
-        self.mongo_client = kwargs.get('mongo_client', MongoClient())
+        self.mongo_client = kwargs.get('mongo_client', None)
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
         self.graph_ids = {}
@@ -598,6 +598,7 @@ class MARC21toBIBFRAMEIngester(object):
             if title_property is not None:
                 if type(title_property) == Literal:
                     return title_property.value
+            return str()
         auth_access_pt = get_title_property(
             title,
             MARC21toBIBFRAMEIngester.AUTH_ACCESS_PT)
@@ -626,6 +627,11 @@ class MARC21toBIBFRAMEIngester(object):
         if title_result is None:
             title_result = self.mongo_client.bibframe.Title.find_one(
                 {"label": label},
+                {"_id":1})
+        # Forth try title id
+        if title_result is None:
+            title_result = self.mongo_client.bibframe.Title.find_one(
+                {"@id": str(title)},
                 {"_id":1})
         # Finally add Title if no matches
         if title_result is None:
