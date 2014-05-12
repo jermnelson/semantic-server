@@ -185,9 +185,9 @@ class TestMARC21toBIBFRAMEIngester(unittest.TestCase):
 
 
     def tearDown(self):
-##        pass
-        for db_name in self.mongo_temp.database_names():
-            self.mongo_temp.drop_database(db_name)
+        pass
+##        for db_name in self.mongo_temp.database_names():
+##            self.mongo_temp.drop_database(db_name)
 
 
 class TestMARC21toSchemaOrgIngester(unittest.TestCase):

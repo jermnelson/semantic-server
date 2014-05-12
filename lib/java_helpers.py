@@ -15,24 +15,51 @@ import json
 import os
 import SocketServer
 import sys
+import urllib
 
 for filename in os.listdir("."):
     if os.path.splitext(filename)[-1].endswith(".jar"):
         sys.path.append(filename)
 
-from java.io import File, FileInputStream, FileOutputStream
+from java.io import File, ByteArrayInputStream, FileInputStream
+from java.io import FileOutputStream, StringReader
 from java.lang import System
 from java.net import URI
-from javax.xml.transform.stream import StreamResult
+from javax.xml.parsers import DocumentBuilderFactory
+from javax.xml.transform.stream import StreamResult, StreamSource
 from javax.xml.transform.sax import SAXSource
 from net.sf import saxon
 from org.xml.sax import InputSource
+from StringIO import StringIO
+from tempfile import NamedTemporaryFile
 
 PROCESSOR = None
+
+def test_ingester(marc_xmlfile):
+    base_uri = 'http://catalog/'
+    args = ["C:\\Users\\jernelson\\Development\\marc2bibframe\\xbin\\saxon.xqy",
+            'marcxmluri={}'.format(
+                os.path.normpath(marc_xmlfile).replace("\\", "/")),
+            'baseuri={}'.format(base_uri),
+            'serialization=rdfxml']
+    query = saxon.Query()
+    sys.stdout = StringIO()
+    System.setOut(sys.stdout)
+    query.main(args)
+    result = sys.stdout.getvalue()
+    return result
 
 class XQueryProcessor(object):
 
     def __init__(self, **kwargs):
+        self.query = saxon.Query()
+        self.base_uri = kwargs.get('base_uri', 'http://catalog/')
+        self.config = saxon.Configuration.newConfiguration()
+        self.static_env = self.config.newStaticQueryContext()
+        query_stream = FileInputStream(kwargs.get('saxon_xqy'))
+        self.static_env.setBaseURI(File(kwargs.get('saxon_xqy')).toURI().toString())
+        self.expression = self.static_env.compileQuery(query_stream, None)
+
 
 ##        with open(kwargs.get('saxon_xqy')) as saxon_xqy:
 ##            query_stream = saxon_xqy.read()
@@ -53,18 +80,33 @@ class XQueryProcessor(object):
 ##        self.xquery_exp = self.static_env.compileQuery(query_stream, None)
 
     def run(self, marc_xml):
-        print("Before xquery evaluator")
+        source_input = StreamSource(StringReader(marc_xml))
+##        factory = DocumentBuilderFactory.newInstance()
+##        builder = factory.newDocumentBuilder()
+##        doc = builder.parse(source_input)
+            #File(marc_xml).toURI().toString())
+        dynamic_env = saxon.query.DynamicQueryContext(self.config)
+        options = saxon.lib.ParseOptions(self.config.getParseOptions())
+        doc = self.config.buildDocument(source_input)
+        dynamic_env.setContextItem(doc)
+        self.expression.run(dynamic_env, StreamResult(System.out), {'marcxmluri': ''})
+##        output_file = NamedTemporaryFile(delete=False)
+##        args = [self.saxon_xqy,
+##                'marcxmluri={}'.format(marc_xml),
+##                'baseuri={}'.format(self.base_uri),
+##                'serialization=rdfxml']
+##        result = self.query.main(args)
 ##        self.xquery_evaluator.setExternalVariable(
 ##            saxon.s9api.QName('marcxmluri'),
 ##            saxon.s9api.XdmAtomicValue(marc_xml))
         #source = SAXSource(InputSource(marc_xml))
         #source.setSystemId('http://catalog/')
-        self.xquery_evaluator.setExternalVariable(
-            saxon.s9api.QName("marcxmluri"),
-            saxon.s9api.XdmAtomicValue(marc_xml))
-        out = self.processor.newSerializer(System.out)
-        self.xquery_evaluator.run(out)
-        print("After result={}".format(result))
+##        self.xquery_evaluator.setExternalVariable(
+##            saxon.s9api.QName("marcxmluri"),
+##            saxon.s9api.XdmAtomicValue(marc_xml))
+##        out = self.processor.newSerializer(System.out)
+##        self.xquery_evaluator.run(out)
+##        print("After result={}".format(result))
 
 ##        dynamic_env = saxon.query.DynamicQueryContext(self.config)
 ##        params = saxon.expr.instruct.GlobalParameterSet()
@@ -87,6 +129,7 @@ class Marc2BibframeTCPHandler(SocketServer.StreamRequestHandler):
 ##                   xml_location)
 ##        dynamic_env.setParameters(params)
         self.data = self.rfile.readline().strip()
+        self.data = urllib.unquote(self.data)
         rdf_output = PROCESSOR.run(self.data)
         print("{} wrote XML".format(self.client_address[0]))
         self.wfile.write(rdf_output)
@@ -121,7 +164,7 @@ if __name__ == '__main__':
     # setup query processor
     PROCESSOR = XQueryProcessor(
         base_uri='file://C:/Users/jernelson/Development/marc2bibframe/xbin/saxon.xqy',
-        saxon_xqy="C:\\Users\\jernelson\\Development\\marc2bibframe\\xbin\\saxon.xqy")
+        saxon_xqy="C:\\Users\\jernelson\\Development\\marc2bibframe\\xbin\\saxon-stream.xqy")
 
     # Run as a socket server
     HOST, PORT = "localhost", 8089

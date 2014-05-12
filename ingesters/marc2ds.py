@@ -152,6 +152,10 @@ class MARC21toBIBFRAMEIngester(object):
     """
     AUTH_ACCESS_PT = URIRef("http://bibframe.org/vocab/authorizedAccessPoint")
     COLLECTION_CLASSES = {
+         'v1#Authority': "Authority", # MADS mapping
+         'v1#ComplexSubject': 'Topic', # MADS mapping
+         'v1#PersonalName': 'Person', # MADS mapping
+         'v1#Topic': 'Topic', # MADS mapping
          'Archival': 'Instance',
          'Audio': 'Work',
          'Cartography': 'Work',
@@ -171,7 +175,7 @@ class MARC21toBIBFRAMEIngester(object):
          'MultipartMonograph': 'Instance',
          'NotatedMovement': 'Work',
          'NotatedMusic': 'Work',
-         'Place': 'Authority',
+         #'Place': 'Authority',
          'Print': 'Instance',
          'Review': 'Annotation',
          'Serial': 'Instance',
@@ -217,6 +221,7 @@ class MARC21toBIBFRAMEIngester(object):
         Returns:
             ObjectID: Entity's MongoDB ID
         """
+
         def add_or_extend_property(name, value):
             if name in doc:
                 if type(doc[name]) != list:
@@ -289,6 +294,8 @@ class MARC21toBIBFRAMEIngester(object):
                                 self.__process_language__(obj))
                         elif str(predicate) == id_uri_uri:
                             add_or_extend_property(bf_property, obj.decode())
+                        elif obj.startswith('http://www.loc.gov/mads/'):
+                            continue
                         else:
                             add_or_extend_property(
                                 bf_property,
@@ -469,6 +476,28 @@ class MARC21toBIBFRAMEIngester(object):
             return str(result.get('_id'))
         # Doesn't exist in collection, now adds entity
         return str(self.__add_entity__(subject, graph, collection))
+
+    def __get_or_add_marc__(self, record):
+        """Internal method takes a MARC record and either returns an existing
+        MARC Mongo ID or creates a new MARC entity in the semantic server
+
+        Args:
+            record (pymarc.Record): MARC21 record
+
+        Returns:
+            str: String of MARC records MongoDB ID
+        """
+        for field in record.get_fields('035'):
+            if 'a' in field.subfields:
+                mongod_id = self.mongo_client.marc.bibliographic.find_one(
+                    {"fields.035.subfields.a": field['a']},
+                    {"_id"})
+                if mongod_id is not None:
+                    return str(mongod_id)
+        mongod_id = self.__convert_fields_add_datastore__(record.as_dict())
+        return mongod_id
+
+
 
     def __get_type__(self, subject, graph):
         """Internal method takes a subject and a graph, tries to extract
@@ -740,7 +769,7 @@ class MARC21toBIBFRAMEIngester(object):
         Returns:
             list: MongoID
         """
-        marc_id = self.__convert_fields_add_datastore__(record.as_dict())
+        marc_id = self.__get_or_add_marc__(record)
         marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
         bibframe_graph = self.__xquery_chain__(marc_xml)
         self.__mongodbize_graph__(bibframe_graph, marc_id)
