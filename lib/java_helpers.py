@@ -10,21 +10,24 @@
 # Copyright:   (c) Jeremy Nelson, Colorado College 2014
 # Licence:     MIT
 #-------------------------------------------------------------------------------
+import argparse
 import datetime
 import json
 import os
 import SocketServer
 import sys
+import tempfile
 import urllib
 
 for filename in os.listdir("."):
     if os.path.splitext(filename)[-1].endswith(".jar"):
         sys.path.append(filename)
 
-from java.io import File, ByteArrayInputStream, FileInputStream
-from java.io import FileOutputStream, StringReader
+from java.io import File, ByteArrayInputStream, ByteArrayOutputStream
+from java.io import FileInputStream, FileOutputStream, PrintStream, StringReader
 from java.lang import System
 from java.net import URI
+from java.util import Properties
 from javax.xml.parsers import DocumentBuilderFactory
 from javax.xml.transform.stream import StreamResult, StreamSource
 from javax.xml.transform.sax import SAXSource
@@ -89,7 +92,13 @@ class XQueryProcessor(object):
         options = saxon.lib.ParseOptions(self.config.getParseOptions())
         doc = self.config.buildDocument(source_input)
         dynamic_env.setContextItem(doc)
-        self.expression.run(dynamic_env, StreamResult(System.out), {'marcxmluri': ''})
+        dynamic_env.setParameter('baseuri', 'http://catalog/')
+        dynamic_env.setParameter('raw_marcxml', marc_xml)
+        dynamic_env.setParameter('serialization', 'rdfxml')
+        output_stream = StreamResult(ByteArrayOutputStream())
+        self.expression.run(dynamic_env,
+                            output_stream,
+                            None)
 ##        output_file = NamedTemporaryFile(delete=False)
 ##        args = [self.saxon_xqy,
 ##                'marcxmluri={}'.format(marc_xml),
@@ -115,13 +124,36 @@ class XQueryProcessor(object):
 ##            marc_xml)
 ##        dynamic_env.setParameters(params)
 ##        result = self.xquery_exp.run(dynamic_env)
-        return result
-
+        return output_stream.getOutputStream().toString()
 
 class Marc2BibframeTCPHandler(SocketServer.StreamRequestHandler):
 
-
     def handle(self):
+        try:
+            marc_xmlfile = self.request.recv(1014).strip()
+
+            base_uri = 'http://catalog/'
+    #        output_file = NamedTemporaryFile(delete=False)
+            args = ["C:\\Users\\jernelson\\Development\\marc2bibframe\\xbin\\saxon.xqy",
+    #                "-o:{}".format(output_file.name),
+                    'marcxmluri={}'.format(
+                    os.path.normpath(marc_xmlfile).replace("\\", "/")),
+                    'baseuri={}'.format(base_uri),
+                    'serialization=rdfxml']
+            query = saxon.Query()
+            output_stream = ByteArrayOutputStream()
+            System.setOut(PrintStream(output_stream))
+            query.main(args)
+            self.wfile.write(output_stream.toString().encode('ascii',
+                                                         errors='ignore'))
+        except:
+            self.request.write("Error processing MARC XML:\n\t{}".format(sys.exc_info()[0]))
+##        output_file.close()
+##        self.request.sendall(output_file.name)
+
+
+
+    def stream_handle(self):
 ##        config = saxon.Configuration.newConfiguration()
 ##        dynamic_env = saxon.query.DynamicQueryContext(config)
 ##        params = saxon.expr.instruct.GlobalParameterSet()
@@ -130,8 +162,10 @@ class Marc2BibframeTCPHandler(SocketServer.StreamRequestHandler):
 ##        dynamic_env.setParameters(params)
         self.data = self.rfile.readline().strip()
         self.data = urllib.unquote(self.data)
+
         rdf_output = PROCESSOR.run(self.data)
-        print("{} wrote XML".format(self.client_address[0]))
+        print("{} wrote XML {}".format(self.client_address[0],
+            rdf_output))
         self.wfile.write(rdf_output)
 
 def marc2bibframe(**kwargs):
@@ -160,16 +194,25 @@ def marc2bibframe(**kwargs):
     xquery_exp.run(dynamic_env,StreamResult(destination), None)
 
 if __name__ == '__main__':
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument('host',
+                         help='Host for xquery server',
+                         default='localhost')
+    parser.add_argument('port',
+                        type=int,
+                        help='Port for xquery server',
+                        default=8089)
+    args = parser.parse_args()
     # setup query processor
     PROCESSOR = XQueryProcessor(
-        base_uri='file://C:/Users/jernelson/Development/marc2bibframe/xbin/saxon.xqy',
+        base_uri='file://C:/Users/jernelson/Development/marc2bibframe/xbin/saxon-stream.xqy',
         saxon_xqy="C:\\Users\\jernelson\\Development\\marc2bibframe\\xbin\\saxon-stream.xqy")
 
     # Run as a socket server
-    HOST, PORT = "localhost", 8089
     server = SocketServer.TCPServer(
-        (HOST, PORT),
+        (args.host, args.port),
         Marc2BibframeTCPHandler)
-    print("Running xquery server at {} {}\nCtrl-C to stop".format(HOST, PORT))
+    print("Running xquery server at {} {}\nCtrl-C to stop".format(args.host,
+                                                                  args.port))
     server.serve_forever()
+

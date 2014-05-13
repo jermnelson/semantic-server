@@ -13,6 +13,7 @@ import datetime
 import json
 import os
 import sys
+import tempfile
 
 PROJECT_DIR = os.path.split(os.path.realpath(__file__))[0]
 JAR_DIR = os.path.join(PROJECT_DIR,

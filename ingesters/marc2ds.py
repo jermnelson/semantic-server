@@ -15,6 +15,7 @@ import pymarc
 import os
 import subprocess
 import shutil
+import socket
 import sys
 import urllib
 import urllib2
@@ -154,7 +155,12 @@ class MARC21toBIBFRAMEIngester(object):
     COLLECTION_CLASSES = {
          'v1#Authority': "Authority", # MADS mapping
          'v1#ComplexSubject': 'Topic', # MADS mapping
+         'v1#ConferenceName': 'Authority', # MADS mapping
+         'v1#CorporateName': 'Organization', # MADS mapping
+         'v1#GenreForm': 'Annotation', # MADS mapping
+         'v1#Geographic': 'Topic', # MADS mapping
          'v1#PersonalName': 'Person', # MADS mapping
+         'v1#NameTitle': 'Authority', # MADS mapping
          'v1#Topic': 'Topic', # MADS mapping
          'Archival': 'Instance',
          'Audio': 'Work',
@@ -175,7 +181,7 @@ class MARC21toBIBFRAMEIngester(object):
          'MultipartMonograph': 'Instance',
          'NotatedMovement': 'Work',
          'NotatedMusic': 'Work',
-         #'Place': 'Authority',
+         'Place': 'Authority',
          'Print': 'Instance',
          'Review': 'Annotation',
          'Serial': 'Instance',
@@ -205,11 +211,13 @@ class MARC21toBIBFRAMEIngester(object):
         self.mongo_client = kwargs.get('mongo_client', None)
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
+        self.xquery_host = kwargs.get('xquery_host', 'localhost')
+        self.xquery_port = kwargs.get('xquery_port', 8089)
         self.graph_ids = {}
+        self.filenames = []
         self.language_labels = {}
 
-
-    def __add_entity__(self, subject, graph, collection=None):
+    def __add_entity__(self, subject, graph, collection=None, marc_id=None):
         """Internal method takes a URIRef and a graph, expands any URIRefs and
         then adds entity to Semantic Server. If collection is None, attempts to
         guess collection.
@@ -217,6 +225,8 @@ class MARC21toBIBFRAMEIngester(object):
         Args:
             subject (rdflib.URIRef): BIBFRAME subject
             graph (rdflib.Graph): BIBFRAME graph
+            collection (pymongo.Collection): Semantic server bibframe collection
+            marc_id (str): String of MARC Semantic server Mongo ID
 
         Returns:
             ObjectID: Entity's MongoDB ID
@@ -301,9 +311,10 @@ class MARC21toBIBFRAMEIngester(object):
                                 bf_property,
                                 str(self.__get_or_add_entity__(
                                     obj,
-                                    graph)))
-
-
+                                    graph,
+                                    marc_id)))
+        if 'derivedFrom' in doc and marc_id is not None:
+            doc['derivedFrom'] = marc_id
         entity_id = collection.insert(doc)
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
@@ -444,7 +455,7 @@ class MARC21toBIBFRAMEIngester(object):
            category_id = self.__add_entity__(category, graph)
         return str(category_id)
 
-    def __get_or_add_entity__(self, subject, graph):
+    def __get_or_add_entity__(self, subject, graph, marc_id=None):
         """Internal method takes a URIRef and a graph, first checking to see
         if the subject already exists as an entity in the datastore or creates
         a entity by iterating through the subject's predicates and objects
@@ -452,6 +463,7 @@ class MARC21toBIBFRAMEIngester(object):
         Args:
             subject (rdflib.URIRef): BIBFRAME subject
             graph (rdflib.Graph): BIBFRAME graph
+            marc_id (str): Semantic server's id for MARC record
 
         Returns:
             str: String of entity's MongoDB ID
@@ -475,7 +487,7 @@ class MARC21toBIBFRAMEIngester(object):
         if result is not None:
             return str(result.get('_id'))
         # Doesn't exist in collection, now adds entity
-        return str(self.__add_entity__(subject, graph, collection))
+        return str(self.__add_entity__(subject, graph, collection, marc_id))
 
     def __get_or_add_marc__(self, record):
         """Internal method takes a MARC record and either returns an existing
@@ -533,7 +545,7 @@ class MARC21toBIBFRAMEIngester(object):
 ##        instances = self.__process_instances__(graph)
         for subject in graph.subjects():
             if not str(subject) in self.graph_ids:
-                self.__get_or_add_entity__(subject, graph)
+                self.__get_or_add_entity__(subject, graph, marc_db_id)
 
 
     def __process_subject__(self, subject, graph):
@@ -599,12 +611,16 @@ class MARC21toBIBFRAMEIngester(object):
         output = {'@id': uri}
         if uri in self.language_labels:
             return self.language_labels.get(uri)
-        lang_json = json.load(urllib2.urlopen("{}.json".format(uri)))
-        if lang_json is not None:
-            for lang in lang_json[0][authoritativeLabel]:
-                if lang.get('@language','').startswith('en'):
-                    output['label'] = lang['@value']
-        self.language_labels[uri] = output
+        try:
+            lang_json = json.load(urllib2.urlopen("{}.json".format(uri)))
+            if lang_json is not None and authoritativeLabel in lang_json[0]:
+                for lang in lang_json[0][authoritativeLabel]:
+                    if lang.get('@language','').startswith('en'):
+                        output['label'] = lang['@value']
+            self.language_labels[uri] = output
+        except urllib2.HTTPError, e:
+            # URL not found
+            pass
         return output
 
 
@@ -705,10 +721,23 @@ class MARC21toBIBFRAMEIngester(object):
         return output
 
 
-
-
-
     def __xquery_chain__(self, marc_xml):
+        xml_file = NamedTemporaryFile(delete=False)
+        xml_file.write(etree.tostring(marc_xml,
+                                      xml_declaration=True,
+                                      encoding='UTF-8'))
+        xml_file.close()
+        xquery_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        xquery_server.connect((self.xquery_host, self.xquery_port))
+        xquery_server.sendall(xml_file.name + "\n")
+        rdf_filename = xquery_server.recv(80000)
+        xquery_server.close()
+        bf_graph = Graph()
+        bf_graph.parse(data=rdf_filename, format='xml')
+        os.remove(xml_file.name)
+        return bf_graph
+
+    def __xquery_chain_system__(self, marc_xml):
         """Internal method takes a MARC XML document, serializes to temp
         location, runs a Java subprocess with Saxon to convert from MARC XML to
         a temp RDF XML version and then returns a BIBFRAME graph.
@@ -769,10 +798,12 @@ class MARC21toBIBFRAMEIngester(object):
         Returns:
             list: MongoID
         """
+        self.graph_ids = {}
         marc_id = self.__get_or_add_marc__(record)
         marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
         bibframe_graph = self.__xquery_chain__(marc_xml)
         self.__mongodbize_graph__(bibframe_graph, marc_id)
+        bibframe_graph.close()
 
 
 class MARC21toSchemaOrgIngester(object):
