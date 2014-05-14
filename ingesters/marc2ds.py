@@ -19,6 +19,7 @@ import socket
 import sys
 import urllib
 import urllib2
+import uuid
 
 from collections import OrderedDict
 from pymongo import MongoClient
@@ -618,8 +619,8 @@ class MARC21toBIBFRAMEIngester(object):
                     if lang.get('@language','').startswith('en'):
                         output['label'] = lang['@value']
             self.language_labels[uri] = output
-        except urllib2.HTTPError, e:
-            # URL not found
+        except (ValueError, urllib2.HTTPError):
+            # URL not found or JSON malformed
             pass
         return output
 
@@ -799,6 +800,12 @@ class MARC21toBIBFRAMEIngester(object):
             list: MongoID
         """
         self.graph_ids = {}
+        # MARC record must have a 001 for BIBFRAME xquery to function properly
+        if not record['001']:
+            unique_id = uuid.uuid1()
+            field001 = pymarc.Field('001')
+            field001.data = str(unique_id).split("-")[0]
+            record.add_field(field001)
         marc_id = self.__get_or_add_marc__(record)
         marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
         bibframe_graph = self.__xquery_chain__(marc_xml)
