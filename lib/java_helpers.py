@@ -92,7 +92,7 @@ class XQueryProcessor(object):
         options = saxon.lib.ParseOptions(self.config.getParseOptions())
         doc = self.config.buildDocument(source_input)
         dynamic_env.setContextItem(doc)
-        dynamic_env.setParameter('baseuri', 'http://catalog/')
+        dynamic_env.setParameter('baseuri', 'self.base_uri')
         dynamic_env.setParameter('raw_marcxml', marc_xml)
         dynamic_env.setParameter('serialization', 'rdfxml')
         output_stream = StreamResult(ByteArrayOutputStream())
@@ -147,7 +147,7 @@ class Marc2BibframeTCPHandler(SocketServer.StreamRequestHandler):
             self.wfile.write(output_stream.toString().encode('ascii',
                                                          errors='ignore'))
         except:
-            self.request.write("Error processing MARC XML:\n\t{}".format(sys.exc_info()[0]))
+            self.wfile.write("Error processing MARC XML:\n\t{}".format(sys.exc_info()[0]))
 ##        output_file.close()
 ##        self.request.sendall(output_file.name)
 

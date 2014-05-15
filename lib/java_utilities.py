@@ -15,13 +15,12 @@ import os
 import sys
 import tempfile
 
-PROJECT_DIR = os.path.split(os.path.realpath(__file__))[0]
-JAR_DIR = os.path.join(PROJECT_DIR,
-                       "lib")
-for jar_file in os.listdir(JAR_DIR):
+##PROJECT_DIR = os.path.split(os.path.realpath(__file__))[0]
+##JAR_DIR = os.path.join(PROJECT_DIR,
+##                       "lib")
+for jar_file in os.listdir("."):
     if os.path.splitext(jar_file)[-1].endswith('.jar'):
-        sys.path.append(os.path.join(JAR_DIR,
-                                     jar_file))
+        sys.path.append(jar_file)
 
 import com.mongodb.Mongo as MongoClient
 from java.io import ByteArrayOutputStream, File, FileInputStream

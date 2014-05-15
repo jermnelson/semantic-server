@@ -485,6 +485,8 @@ class MARC21toBIBFRAMEIngester(object):
             result = collection.find_one(
                 {"authorizedAccessPoint": authorized_access_point.value},
                 {"_id":1})
+        # Finally searches label
+
         if result is not None:
             return str(result.get('_id'))
         # Doesn't exist in collection, now adds entity
