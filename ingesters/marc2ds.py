@@ -141,7 +141,85 @@ def add_get_title_bibliographic(bib_marc, client):
     return bibframe.Title.insert(title_dict.as_dict())
 
 
-class MARC21toBIBFRAMEIngester(object):
+class MARC21Ingester(object):
+
+    def __init__(self, **kwargs):
+        self.mongo_client = kwargs.get('mongo_client', None)
+
+    def __convert_fields_add_datastore__(self, record_dict):
+        """Internal method coverts pymarc MARC21 record to MongoDB optimized
+        document for storage
+
+        Args:
+            record_dict (dict): Dictionary of a MARC21 record
+
+        Returns:
+            str: MongoDB Identifier
+        """
+        new_fields = OrderedDict()
+        for row in record_dict['fields']:
+            tag = row.keys()[0]
+            contents = self.__convert_subfields__(row.get(tag))
+            if tag in new_fields:
+                if type(new_fields[tag]) == list:
+                    new_fields[tag].append(contents)
+                else:
+                    org_field = new_fields[tag]
+                    new_fields[tag] = [org_field, contents]
+            else:
+                new_fields[tag] = contents
+        record_dict['fields'] = new_fields
+        datastore_id = self.mongo_client.marc.bibliographic.insert(record_dict)
+        return str(datastore_id)
+
+
+    def __convert_subfields__(self, field):
+        """Internal method converts pymarc field's subfields to OrderedDict
+
+        Args:
+            field - dict of MARC21 field
+
+        Returns:
+            dict
+        """
+        new_subfields = OrderedDict()
+        if 'subfields' in field:
+            for row in field['subfields']:
+                subfield = row.keys()[0]
+                value = row.get(subfield)
+                if subfield in new_subfields:
+                    if type(new_subfields[subfield]) == list:
+                        new_subfields[subfield].append(value)
+                    else:
+                        org_subfield = new_subfields[subfield]
+                        new_subfields[subfield] = [org_subfield,
+                                                   value]
+                else:
+                    new_subfields[subfield] = value
+            field['subfields'] = new_subfields
+        return field
+
+    def __get_or_add_marc__(self, record):
+        """Internal method takes a MARC record and either returns an existing
+        MARC Mongo ID or creates a new MARC entity in the semantic server
+
+        Args:
+            record (pymarc.Record): MARC21 record
+
+        Returns:
+            str: String of MARC records MongoDB ID
+        """
+        for field in record.get_fields('035'):
+            if 'a' in field.subfields:
+                mongod_id = self.mongo_client.marc.bibliographic.find_one(
+                    {"fields.035.subfields.a": field['a']},
+                    {"_id"})
+                if mongod_id is not None:
+                    return str(mongod_id)
+        mongod_id = self.__convert_fields_add_datastore__(record.as_dict())
+        return mongod_id
+
+class MARC21toBIBFRAMEIngester(MARC21Ingester):
     """
     Class ingests MARC21 records through
     Library of Congress's MARC2BIBFRAME xquery framework using Saxon
@@ -208,8 +286,7 @@ class MARC21toBIBFRAMEIngester(object):
             xqy_location -- Complete path to saxon.xqy from bibframe
 
         """
-        self.baseuri = kwargs.get('baseuri', 'http://catalog/')
-        self.mongo_client = kwargs.get('mongo_client', None)
+        self.baseuri = kwargs.get('baseuri')
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
         self.xquery_host = kwargs.get('xquery_host', 'localhost')
@@ -217,6 +294,8 @@ class MARC21toBIBFRAMEIngester(object):
         self.graph_ids = {}
         self.filenames = []
         self.language_labels = {}
+        super(MARC21Ingester, self).__init__(
+            mongo_client=kwargs.get('mongo_client'))
 
     def __add_entity__(self, subject, graph, collection=None, marc_id=None):
         """Internal method takes a URIRef and a graph, expands any URIRefs and
@@ -320,58 +399,7 @@ class MARC21toBIBFRAMEIngester(object):
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
 
-    def __convert_fields_add_datastore__(self, record_dict):
-        """Internal method coverts pymarc MARC21 record to MongoDB optimized
-        document for storage
 
-        Args:
-            record_dict (dict): Dictionary of a MARC21 record
-
-        Returns:
-            str: MongoDB Identifier
-        """
-        new_fields = OrderedDict()
-        for row in record_dict['fields']:
-            tag = row.keys()[0]
-            contents = self.__convert_subfields__(row.get(tag))
-            if tag in new_fields:
-                if type(new_fields[tag]) == list:
-                    new_fields[tag].append(contents)
-                else:
-                    org_field = new_fields[tag]
-                    new_fields[tag] = [org_field, contents]
-            else:
-                new_fields[tag] = contents
-        record_dict['fields'] = new_fields
-        datastore_id = self.mongo_client.marc.bibliographic.insert(record_dict)
-        return str(datastore_id)
-
-
-    def __convert_subfields__(self, field):
-        """Internal method converts pymarc field's subfields to OrderedDict
-
-        Args:
-            field - dict of MARC21 field
-
-        Returns:
-            dict
-        """
-        new_subfields = OrderedDict()
-        if 'subfields' in field:
-            for row in field['subfields']:
-                subfield = row.keys()[0]
-                value = row.get(subfield)
-                if subfield in new_subfields:
-                    if type(new_subfields[subfield]) == list:
-                        new_subfields[subfield].append(value)
-                    else:
-                        org_subfield = new_subfields[subfield]
-                        new_subfields[subfield] = [org_subfield,
-                                                   value]
-                else:
-                    new_subfields[subfield] = value
-            field['subfields'] = new_subfields
-        return field
 
     def __expand_classification__(self, classification, graph):
         """Internal method takes a classification subject and expands the
@@ -492,25 +520,7 @@ class MARC21toBIBFRAMEIngester(object):
         # Doesn't exist in collection, now adds entity
         return str(self.__add_entity__(subject, graph, collection, marc_id))
 
-    def __get_or_add_marc__(self, record):
-        """Internal method takes a MARC record and either returns an existing
-        MARC Mongo ID or creates a new MARC entity in the semantic server
 
-        Args:
-            record (pymarc.Record): MARC21 record
-
-        Returns:
-            str: String of MARC records MongoDB ID
-        """
-        for field in record.get_fields('035'):
-            if 'a' in field.subfields:
-                mongod_id = self.mongo_client.marc.bibliographic.find_one(
-                    {"fields.035.subfields.a": field['a']},
-                    {"_id"})
-                if mongod_id is not None:
-                    return str(mongod_id)
-        mongod_id = self.__convert_fields_add_datastore__(record.as_dict())
-        return mongod_id
 
 
 
@@ -681,6 +691,11 @@ class MARC21toBIBFRAMEIngester(object):
             title_result = self.mongo_client.bibframe.Title.find_one(
                 {"@id": str(title)},
                 {"_id":1})
+        # Fifth tries just titleValue
+        if title_result is None:
+            title_result = self.mongo_client.bibframe.Title.find_one(
+                {"titleValue": title_value},
+                {"_id":1})
         # Finally add Title if no matches
         if title_result is None:
             title_id = self.__add_entity__(
@@ -725,22 +740,21 @@ class MARC21toBIBFRAMEIngester(object):
 
 
     def __xquery_chain__(self, marc_xml):
-        xml_file = NamedTemporaryFile(delete=False)
-        xml_file.write(etree.tostring(marc_xml,
-                                      xml_declaration=True,
-                                      encoding='UTF-8'))
-        xml_file.close()
         xquery_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         xquery_server.connect((self.xquery_host, self.xquery_port))
-        xquery_server.sendall(xml_file.name + "\n")
-        rdf_filename = xquery_server.recv(80000)
+        xquery_server.sendall(marc_xml + "\n")
+        rdf_xml = ''
+        while 1:
+            data = xquery_server.recv(1024)
+            if not data:
+                break
+            rdf_xml += data
         xquery_server.close()
         bf_graph = Graph()
-        bf_graph.parse(data=rdf_filename, format='xml')
-        os.remove(xml_file.name)
+        bf_graph.parse(data=rdf_xml, format='xml')
         return bf_graph
 
-    def __xquery_chain_system__(self, marc_xml):
+    def __xquery_chain__process__(self, marc_xml):
         """Internal method takes a MARC XML document, serializes to temp
         location, runs a Java subprocess with Saxon to convert from MARC XML to
         a temp RDF XML version and then returns a BIBFRAME graph.
@@ -752,9 +766,7 @@ class MARC21toBIBFRAMEIngester(object):
             rdflib.Graph:  BIBFRAME graph of rdf xml from parsed xquery
         """
         xml_file = NamedTemporaryFile(delete=False)
-        xml_file.write(etree.tostring(marc_xml,
-                                      xml_declaration=True,
-                                      encoding='UTF-8'))
+        xml_file.write(marc_xml)
         xml_file.close()
         xml_filepath = r"{}".format(xml_file.name).replace("\\","/")
         java_command = ['java',
@@ -809,13 +821,20 @@ class MARC21toBIBFRAMEIngester(object):
             field001.data = str(unique_id).split("-")[0]
             record.add_field(field001)
         marc_id = self.__get_or_add_marc__(record)
-        marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
-        bibframe_graph = self.__xquery_chain__(marc_xml)
-        self.__mongodbize_graph__(bibframe_graph, marc_id)
-        bibframe_graph.close()
+##        marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
+        # if a BIBFRAME Work exists for the MARC record, skip query
+        result = self.mongo_client.bibframe.Work.find_one(
+            {"derivedFrom": marc_id},
+            {"_id":1})
+        if result is None:
+            marc_xml = pymarc.record_to_xml(record, namespace=True)
+
+            bibframe_graph = self.__xquery_chain__(marc_xml)
+            self.__mongodbize_graph__(bibframe_graph, marc_id)
+            bibframe_graph.close()
 
 
-class MARC21toSchemaOrgIngester(object):
+class MARC21toSchemaOrgIngester(MARC21Ingester):
     """
     Class ingests MARC21 records through OCLC xISBN and other web services to
     extract schema.org metadata based on the ISBN or other identifiers into
@@ -827,6 +846,7 @@ class MARC21toSchemaOrgIngester(object):
     >> ingester.run()
     """
     OCLC_XISBN_BASE = 'http://xisbn.worldcat.org/webservices/xid/'
+    OCLC_XISSN_BASE = 'http://xissn.worldcat.org/webservices/xid/'
     OCLC_EXP_BASE = 'http://experiment.worldcat.org/entity/work/data/'
     COLLECTION_CLASSES = {}
 
@@ -855,6 +875,108 @@ class MARC21toSchemaOrgIngester(object):
         else:
             return owi # Returns a list
 
+
+    def __get_or_add_oclc_creator__(self, creators):
+        creators = []
+        loc_urls = []
+        for url in creators:
+            creator_id = self.mongo_client.schema.Person.find_one(
+                {"sameAs": url})
+            if creator_id is not None:
+                creators.append(str(creator_id))
+            elif url.startswith("http://id.loc"):
+                pass
+
+
+
+
+    def __add_loc_name_authority__(self, loc_url):
+        name_rec = jsons.load(urllib2.urlopen(loc_url))
+
+
+
+    def __get_or_add_oclc_work__(self, oclc_json):
+        """Internal method takes a oclc json for a work and either returns
+        an existing semantic server ID for the schema.org/CreativeWork or
+        creates a new schema.org/CreativeWork or CreativeWork subclass
+
+        Args:
+            oclc_json (dict): OCLC CreativeWork JSON from OCLC webservice
+        """
+        doc = {}
+        if 'creator' in oclc_json:
+            doc['creator'] = self.__get_or_add_oclc_creator__(
+                oclc_json.get('creator'))
+
+
+
+
+
+    def __get_type__(self, record):
+        """Internal method takes a MARC21 record and attempts to guess
+        schema.org type.
+
+        Args:
+            record (pymarc.Record): MARC21 record
+
+        Returns:
+            str: schema.org class
+        """
+        # Default
+        return 'Thing'
+
+    def __oclc_workflow__(self, record):
+        """Internal method takes either an ISBN or ISSN, queries
+        OCLC web services and returns the MongoDB id of the schema.org
+        Creative Work.
+
+        Args:
+            record (pymarc.Record): MARC21 record
+
+        Returns:
+            str: String of MongoDB id of the schema.org/CreativeWork
+        """
+        def create_url(url_base, type_of, value):
+            url = urllib2.urlparse.urljoin(url_base, "{}/".format(type_of))
+            return urllib2.urlparse.urljoin(url, value)
+        if record.isbn():
+            url = create_url(MARC21toSchemaOrgIngester.OCLC_XISBN_BASE,
+                             'isbn',
+                             record.isbn())
+        elif record['020'] is not None:
+            # First start w/valid ISSN
+            if record['020']['a'] is not None:
+                url = create_url(MARC21toSchemaOrgIngester.OCLC_XISSN_BASE,
+                                 'issn',
+                                 record['020']['a'])
+                url = urllib2.urlparse.urljoin(url, record['020']['a'])
+            elif record['020']['m'] is not None:
+
+
+
+
+    def __process_isbn__(self, isbn):
+        url = urllib2.urlparse.urljoin(
+            MARC21toSchemaOrgIngester.OCLC_XISBN_BASE,
+            'isbn/')
+        url = urllib2.urlparse.urljoin(url, isbn)
+        params = {
+            'fl': 'oclcnum',
+            'format': 'json',
+            'method': 'getMetadata'}
+        oclc_json = json.load(
+            urllib2.urlopen(
+                url,
+                data=urllib.urlencode(params)))
+        for row in oclc_json.get('list'):
+            if 'oclcnum' in row:
+                oclcnums = row.get('oclcnum')
+                break
+        if oclcnums is not None:
+            for number in oclcnums:
+                owi = self.__get_oclc_owi__(number)
+                self.__process_owi__(owi)
+
     def __process_owi__(self, owi):
         if type(owi) == str:
             owi = owi.replace("owi", '') # Remove owi prefix
@@ -862,6 +984,14 @@ class MARC21toSchemaOrgIngester(object):
             MARC21toSchemaOrgIngester.OCLC_EXP_BASE,
             "{}.jsonls".format(owi))
         owi_json = jsons.load(urllib2.urlopen(url))
+        graph = owi_json.get('@graph')
+        for row in graph:
+            if row.get('@id').endswith("jsonld"):
+                continue
+            work_id = self.__get_or_add_oclc_work__(row)
+
+
+
 
 
 
@@ -872,15 +1002,17 @@ class MARC21toSchemaOrgIngester(object):
 
     def ingest(self, record):
         """Method runs entire tool-chain to ingest a single MARC record into
-        Semantic Server.
+        Semantic Server's schema.org database and collections.
 
         Args:
             record (pymarc.Record): MARC21 record
-
-        Returns:
-            list: Listing of MongoID
         """
-        pass
+        if record.isbn():
+            work_id = self.__work_harvest__(record)
+
+
+
+
 
 
 
