@@ -92,6 +92,7 @@ def process_marc(record):
         if raw_item is None:
             return
     item_id = raw_item[1:-1]
+    if REDIS_DS.hget()
     item_key = set_statistics(item_id)
     REDIS_DS.hset(item_key, 'number', raw_item)
 
