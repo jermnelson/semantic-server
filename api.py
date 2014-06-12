@@ -17,6 +17,7 @@ from flask.ext.mongokit import Connection, MongoKit
 from flask.ext.restful import Resource, Api
 from elasticsearch import Elasticsearch
 
+
 catalog = Flask(__name__)
 catalog.config.from_pyfile('server.cfg')
 api = Api(catalog)
@@ -71,6 +72,8 @@ class Entity(Resource):
         except redis.ConnectionError, e:
             # Redis not available
             pass
+        # Next try Fedora 4
+
         collection = self.__get_collection__(entity_type)
         entity = collection.find_one({"_id": ObjectId(entity_id)})
         if entity is None:

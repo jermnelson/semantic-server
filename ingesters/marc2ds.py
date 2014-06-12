@@ -294,8 +294,8 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         self.graph_ids = {}
         self.filenames = []
         self.language_labels = {}
-        super(MARC21Ingester, self).__init__(
-            mongo_client=kwargs.get('mongo_client'))
+        super(MARC21toBIBFRAMEIngester, self).__init__(**kwargs)
+
 
     def __add_entity__(self, subject, graph, collection=None, marc_id=None):
         """Internal method takes a URIRef and a graph, expands any URIRefs and
@@ -398,6 +398,31 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         entity_id = collection.insert(doc)
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
+
+    def __decompose_bf_graph__(self, graph):
+        for subject in graph.subjects():
+            if type(subject) == BNode:
+                pass
+            entity = self.__dedup_entity__(subject, graph)
+            if entity is not None:
+                continue
+            type_of = os.path.split(
+                graph.value(subject=node, predicate=rdflib.RDF.type)[-1])
+            object_id = ObjectId()
+            fedora_url = '{}/{}'.format(type_of, object_id)
+
+
+
+    def __dedup_entity__(self, subject, graph):
+
+        # First checks for existing entities with authorizied Access Points
+        sparql_query = """SELECT ?x
+            WHERE ?x <http://bibframe/vocab/authorizedAccessPoint> "{}" """
+        for obj in graph.objects(subject=subject, predicate=AUTH_ACCESS_PT):
+            sparql_query = sparql_query.format(obj.value())
+
+
+
 
 
 
@@ -790,6 +815,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         marc_reader = pymarc.MARCReader(open(marc_filepath),
             to_unicode=True)
         start_time = datetime.datetime.utcnow()
+        print("Started MARC21 batch at {}".format(start_time.isoformat()))
         for i,record in enumerate(marc_reader):
             if not i%10:
                 sys.stderr.write(".")
@@ -800,6 +826,10 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                     (datetime.datetime.utcnow()-start_time).seconds))
             self.ingest(record)
         end_time = datetime.datetime.utcnow()
+        print("Finished MARC21 batch at {}, total time={} minutes".format(
+            end_time.isoformat(),
+            (end_time-start_time).seconds / 60.0))
+
 
 
 
@@ -820,18 +850,21 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             field001 = pymarc.Field('001')
             field001.data = str(unique_id).split("-")[0]
             record.add_field(field001)
-        marc_id = self.__get_or_add_marc__(record)
+##        marc_id = self.__get_or_add_marc__(record)
 ##        marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
+
         # if a BIBFRAME Work exists for the MARC record, skip query
         result = self.mongo_client.bibframe.Work.find_one(
             {"derivedFrom": marc_id},
             {"_id":1})
         if result is None:
             marc_xml = pymarc.record_to_xml(record, namespace=True)
-
-            bibframe_graph = self.__xquery_chain__(marc_xml)
-            self.__mongodbize_graph__(bibframe_graph, marc_id)
-            bibframe_graph.close()
+            try:
+                bibframe_graph = self.__xquery_chain__(marc_xml)
+                self.__mongodbize_graph__(bibframe_graph, marc_id)
+                bibframe_graph.close()
+            except:
+                print("Error with record {}".format(sys.exc_info()[0]))
 
 
 class MARC21toSchemaOrgIngester(MARC21Ingester):
@@ -951,8 +984,7 @@ class MARC21toSchemaOrgIngester(MARC21Ingester):
                                  record['020']['a'])
                 url = urllib2.urlparse.urljoin(url, record['020']['a'])
             elif record['020']['m'] is not None:
-
-
+                pass
 
 
     def __process_isbn__(self, isbn):

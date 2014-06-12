@@ -78,7 +78,7 @@ def add_checkout(raw_date, item_key):
     REDIS_DS.sadd("{}:checkouts".format(item_key),
                   checked_out.isoformat())
 
-def process_marc(record):
+def process_marc(record, skip_existing=False):
     if type(record) == pymarc.Record:
         field = record['945']
         if field is None:
@@ -92,12 +92,11 @@ def process_marc(record):
         if raw_item is None:
             return
     item_id = raw_item[1:-1]
-    if REDIS_DS.hget()
-    item_key = set_statistics(item_id)
+    item_key = set_statistics(item_id, skip_existing)
     REDIS_DS.hset(item_key, 'number', raw_item)
 
 
-def set_statistics(item_id):
+def set_statistics(item_id, skip_existing=False):
     """Function takes an item id, queries Redis datastore"""
     if not REDIS_DS:
         return
@@ -105,6 +104,8 @@ def set_statistics(item_id):
     if not item_key:
         item_key = 'iii-item:{}'.format(REDIS_DS.incr('iii-item'))
         REDIS_DS.hset('items', item_id, item_key)
+    elif skip_existing is True:
+        return item_key
     item_xml = etree.parse(urllib2.urlopen("{}{}".format(III_ITEM_URL,
                                                          item_id)))
     # Sets acquisition date
