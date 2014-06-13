@@ -14,7 +14,7 @@ import os
 import pymarc
 import re
 import sys
-import urllib, urllib2
+import urllib
 
 from bson.objectid import ObjectId
 from gridfs import GridFS
@@ -38,11 +38,11 @@ try:
     elastic_search = ElasticSearch(semantic_server)
     mongo_client = Connection(semantic_server_config.get('MONGODB_HOST'))
 
-except ConnectionFailure, e:
+except ConnectionFailure:
     try:
         mongo_client = Connection()
         elastic_search = ElasticSearch()
-    except ConnectionFailure, e:
+    except ConnectionFailure:
         mongo_client = None
 
 def check_for_cover_art(entity_id, db=mongo_client.bibframe):
@@ -187,7 +187,7 @@ def get_marc(db, marc_id):
         if type(marc_id) != ObjectId:
             marc_id = ObjectId(marc_id)
         return marc_records.find_one({'_id': marc_id})
-    except InvalidId, e:
+    except InvalidId:
         return
 
 def get_work(db, work_id):
@@ -284,7 +284,7 @@ def insert_cover_art(marc_db,
                 try:
                     annotate_src_url, raw_image = get_google_thumbnail(isbn,
                                                                        gbs_api_key)
-                except urllib2.HTTPError, e:
+                except:
                     raw_image = None
                 if raw_image is not None:
                     image_id = cover_art_grid.put(raw_image)

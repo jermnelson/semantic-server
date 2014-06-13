@@ -18,7 +18,7 @@ import shutil
 import socket
 import sys
 import urllib
-import urllib2
+##import urllib2
 import uuid
 
 from collections import OrderedDict
@@ -31,10 +31,10 @@ try:
 except ImportError:
     import xml.etree.ElementTree as etree
 
-import flask_bibframe.models as bf_models
+##import flask_bibframe.models as bf_models
 
 from bson import ObjectId
-import flask_schema_org.models as schema_models
+##import flask_schema_org.models as schema_models
 
 from __init__ import generate_record_info
 
@@ -287,6 +287,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
 
         """
         self.baseuri = kwargs.get('baseuri')
+        self.fedora = kwargs.get('fedora')
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
         self.xquery_host = kwargs.get('xquery_host', 'localhost')
@@ -400,27 +401,58 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         return entity_id
 
     def __decompose_bf_graph__(self, graph):
-        for subject in graph.subjects():
-            if type(subject) == BNode:
-                pass
-            entity = self.__dedup_entity__(subject, graph)
-            if entity is not None:
-                continue
-            type_of = os.path.split(
-                graph.value(subject=node, predicate=rdflib.RDF.type)[-1])
-            object_id = ObjectId()
-            fedora_url = '{}/{}'.format(type_of, object_id)
+        """Internal method takes a BIBFRAME RDF graph and creates Fedora objects
+        for each unique subject in the graph
 
+        Args:
+            graph(rdflib.Graph): BIBFRAME RDF graph
 
+        Returns:
+            list: List of new Fedora objects created from the graph
+        """
+        subject_to_fedora_uri = {}
+        subjects = set([subject for subject in graph.subjects()])
+        # Creates Fedora URI stubs for each unique subject in the RDF graph
+        for subject in subjects:
+            type_of = graph.value(subject=subject, predicate=rdflib.RDF.type).split("/")[-1]
+            type_of = COLLECTION_CLASSES.get(type_of)
+            fedora_uri = "{}/{}/{}".format(
+                self.baseuri,
+                type_of,
+                ObjectId())
+            subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
+        # Now iterate through each subject's triples and creating a graph for
+        # adding an object to Fedora
+        for subject in subjects:
+            new_graph = rdflib.Graph()
+            #! NEED TO DE-DUPLICATE subjects in Fedora
+##            if self.fedora.__dedup__(subject, graph) is not None:
 
-    def __dedup_entity__(self, subject, graph):
-
-        # First checks for existing entities with authorizied Access Points
-        sparql_query = """SELECT ?x
-            WHERE ?x <http://bibframe/vocab/authorizedAccessPoint> "{}" """
-        for obj in graph.objects(subject=subject, predicate=AUTH_ACCESS_PT):
-            sparql_query = sparql_query.format(obj.value())
-
+            for predicate, obj in graph.predicate_objects(subject=subject):
+                if 'isbn' in predicate: # or 'issn' in predicate:
+                    new_graph.add(
+                        (subject_to_fedora_uri.get(subject),
+                         predicate,
+                         str(obj).split("/")[-1]))
+                elif 'identifier' in obj:
+                    ident_uri = rdflib.URIRef('http://bibframe.org/vocab/identifierValue')
+                    ident_value = graph.value(
+                        subject=obj,
+                        predicate=ident_uri)
+                    new_graph.add(
+                        (subject_to_fedora_uri.get(subject),
+                         predicate,
+                         ident_value))
+                else:
+                    if obj in subject_to_fedora_uri:
+                        obj = subject_to_fedora_uri.get(obj)
+                    new_graph.add((subject_to_fedora_uri.get(subject),
+                                   predicate,
+                                   obj))
+            self.fedora.create(
+                str(subject_to_fedora_uri.get(subject)),
+                new_graph)
+        return subject_to_fedora_uri.values()
 
 
 
@@ -650,7 +682,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         if uri in self.language_labels:
             return self.language_labels.get(uri)
         try:
-            lang_json = json.load(urllib2.urlopen("{}.json".format(uri)))
+            lang_json = json.load(urllib.request.urlopen("{}.json".format(uri)))
             if lang_json is not None and authoritativeLabel in lang_json[0]:
                 for lang in lang_json[0][authoritativeLabel]:
                     if lang.get('@language','').startswith('en'):
@@ -853,18 +885,18 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
 ##        marc_id = self.__get_or_add_marc__(record)
 ##        marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
 
-        # if a BIBFRAME Work exists for the MARC record, skip query
-        result = self.mongo_client.bibframe.Work.find_one(
-            {"derivedFrom": marc_id},
-            {"_id":1})
-        if result is None:
-            marc_xml = pymarc.record_to_xml(record, namespace=True)
-            try:
-                bibframe_graph = self.__xquery_chain__(marc_xml)
-                self.__mongodbize_graph__(bibframe_graph, marc_id)
-                bibframe_graph.close()
-            except:
-                print("Error with record {}".format(sys.exc_info()[0]))
+##        # if a BIBFRAME Work exists for the MARC record, skip query
+##        result = self.mongo_client.bibframe.Work.find_one(
+##            {"derivedFrom": marc_id},
+##            {"_id":1})
+##        if result is None:
+        marc_xml = pymarc.record_to_xml(record, namespace=True)
+        try:
+            bibframe_graph = self.__xquery_chain__(marc_xml)
+            self.__decompose_bf_graph__(bibframe_graph)
+            bibframe_graph.close()
+        except:
+            print("Error with record {}".format(sys.exc_info()[0]))
 
 
 class MARC21toSchemaOrgIngester(MARC21Ingester):
