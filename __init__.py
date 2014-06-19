@@ -19,8 +19,8 @@ import urllib
 from bson.objectid import ObjectId
 from gridfs import GridFS
 from flask import Blueprint, Config, current_app, g, render_template
-from flask.ext.mongokit import Connection
-from flask.ext.elasticsearch import ElasticSearch
+##from flask.ext.mongokit import Connection
+##from flask.ext.elasticsearch import ElasticSearch
 ##from flask_bibframe.models import CoverArt
 from pymongo.errors import ConnectionFailure, InvalidId, OperationFailure
 
@@ -32,20 +32,20 @@ blueprint_folder = os.path.abspath(os.path.dirname(__file__))
 app_folder = os.path.split(blueprint_folder)[0]
 
 semantic_server_config = Config(app_folder)
-semantic_server_config.from_pyfile('catalog.cfg')
+##semantic_server_config.from_pyfile('catalog.cfg')
 
-try:
-    elastic_search = ElasticSearch(semantic_server)
-    mongo_client = Connection(semantic_server_config.get('MONGODB_HOST'))
+##try:
+##    elastic_search = ElasticSearch(semantic_server)
+##    mongo_client = Connection(semantic_server_config.get('MONGODB_HOST'))
+##
+##except ConnectionFailure:
+##    try:
+##        mongo_client = Connection()
+##        elastic_search = ElasticSearch()
+##    except ConnectionFailure:
+##        mongo_client = None
 
-except ConnectionFailure:
-    try:
-        mongo_client = Connection()
-        elastic_search = ElasticSearch()
-    except ConnectionFailure:
-        mongo_client = None
-
-def check_for_cover_art(entity_id, db=mongo_client.bibframe):
+def check_for_cover_art(entity_id, db):
     """Function checks if the entity has Cover Art
 
     Args:
@@ -66,7 +66,7 @@ def check_for_cover_art(entity_id, db=mongo_client.bibframe):
 
 
 
-def get_cover_art_image(entity_id, db=mongo_client.bibframe):
+def get_cover_art_image(entity_id, db):
     """Function returns the cover art image of an entity
 
     Args:
@@ -121,7 +121,7 @@ def get_google_thumbnail(isbn, gbs_api_key):
     return (None, None)
 
 
-def get_item_details(mongo_id, mongo_client=mongo_client):
+def get_item_details(mongo_id, mongo_client):
     """Returns rendered HTML of an item's details
 
     Function takes a mongo_id and returns a rendered template of the item. An

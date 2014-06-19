@@ -13,6 +13,7 @@ import datetime
 import json
 import pymarc
 import os
+import rdflib
 import subprocess
 import shutil
 import socket
@@ -35,8 +36,6 @@ except ImportError:
 
 from bson import ObjectId
 ##import flask_schema_org.models as schema_models
-
-from __init__ import generate_record_info
 
 
 def __get_fields_subfields__(marc_rec,
@@ -140,6 +139,12 @@ def add_get_title_bibliographic(bib_marc, client):
         u'From MARC Authority record')
     return bibframe.Title.insert(title_dict.as_dict())
 
+def generate_record_info(content_source,
+                         origin_msg):
+    return {u'languageOfCataloging': u'http://id.loc.gov/vocabulary/iso639-1/en',
+            u'recordContentSource': content_source,
+            u'recordCreationDate': datetime.datetime.utcnow().isoformat(),
+            u'recordOrigin': origin_msg}
 
 class MARC21Ingester(object):
 
@@ -415,46 +420,48 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         # Creates Fedora URI stubs for each unique subject in the RDF graph
         for subject in subjects:
             type_of = graph.value(subject=subject, predicate=rdflib.RDF.type).split("/")[-1]
-            type_of = COLLECTION_CLASSES.get(type_of)
-            fedora_uri = "{}/{}/{}".format(
-                self.baseuri,
-                type_of,
-                ObjectId())
+            if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
+                type_of = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES.get(
+                    type_of)
+            fedora_uri = "{}rest/{}/{}".format(
+                    self.fedora.base_url,
+                    type_of,
+                    ObjectId())
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
         # Now iterate through each subject's triples and creating a graph for
         # adding an object to Fedora
         for subject in subjects:
             new_graph = rdflib.Graph()
-            #! NEED TO DE-DUPLICATE subjects in Fedora
-##            if self.fedora.__dedup__(subject, graph) is not None:
-
+            new_graph.namespace_manager.bind('bf',
+                rdflib.Namespace('http://bibframe.org/vocab/'))
+            fedora_subject = subject_to_fedora_uri.get(subject)
             for predicate, obj in graph.predicate_objects(subject=subject):
                 if 'isbn' in predicate: # or 'issn' in predicate:
                     new_graph.add(
-                        (subject_to_fedora_uri.get(subject),
+                        (fedora_subject,
                          predicate,
                          str(obj).split("/")[-1]))
-                elif 'identifier' in obj:
+                elif 'identifier' in str(obj):
                     ident_uri = rdflib.URIRef('http://bibframe.org/vocab/identifierValue')
                     ident_value = graph.value(
                         subject=obj,
                         predicate=ident_uri)
                     new_graph.add(
-                        (subject_to_fedora_uri.get(subject),
+                        (fedora_subject,
                          predicate,
                          ident_value))
                 else:
                     if obj in subject_to_fedora_uri:
                         obj = subject_to_fedora_uri.get(obj)
-                    new_graph.add((subject_to_fedora_uri.get(subject),
+                    new_graph.add((fedora_subject,
                                    predicate,
                                    obj))
+            print("Trying to create {}".format(fedora_subject))
             self.fedora.create(
-                str(subject_to_fedora_uri.get(subject)),
+                str(fedora_subject),
                 new_graph)
+
         return subject_to_fedora_uri.values()
-
-
 
 
 
@@ -799,8 +806,8 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
     def __xquery_chain__(self, marc_xml):
         xquery_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         xquery_server.connect((self.xquery_host, self.xquery_port))
-        xquery_server.sendall(marc_xml + "\n")
-        rdf_xml = ''
+        xquery_server.sendall(marc_xml + b"\n")
+        rdf_xml = b''
         while 1:
             data = xquery_server.recv(1024)
             if not data:
