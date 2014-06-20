@@ -25,7 +25,7 @@ import uuid
 from collections import OrderedDict
 from pymongo import MongoClient
 from rdflib import BNode, Graph, plugin, Literal, URIRef
-
+from string import Template
 from tempfile import NamedTemporaryFile
 try:
     from lxml import etree
@@ -423,24 +423,29 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
                 type_of = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES.get(
                     type_of)
-            fedora_uri = "{}rest/{}/{}".format(
+            fedora_uri = "/".join([
                     self.fedora.base_url,
+                    'rest',
                     type_of,
-                    ObjectId())
+                    str(ObjectId())])
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
         # Now iterate through each subject's triples and creating a graph for
         # adding an object to Fedora
+        bf_graphs = []
         for subject in subjects:
+            if 'identifier' in str(subject):
+                continue
             new_graph = rdflib.Graph()
             new_graph.namespace_manager.bind('bf',
-                rdflib.Namespace('http://bibframe.org/vocab/'))
+                rdflib.Namespace('http://bibframe.org/vocab'))
             fedora_subject = subject_to_fedora_uri.get(subject)
             for predicate, obj in graph.predicate_objects(subject=subject):
+                print(fedora_subject, predicate, obj)
                 if 'isbn' in predicate: # or 'issn' in predicate:
                     new_graph.add(
                         (fedora_subject,
                          predicate,
-                         str(obj).split("/")[-1]))
+                         rdflib.Literal(str(obj).split("/")[-1])))
                 elif 'identifier' in str(obj):
                     ident_uri = rdflib.URIRef('http://bibframe.org/vocab/identifierValue')
                     ident_value = graph.value(
@@ -456,12 +461,13 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                     new_graph.add((fedora_subject,
                                    predicate,
                                    obj))
-            print("Trying to create {}".format(fedora_subject))
-            self.fedora.create(
-                str(fedora_subject),
-                new_graph)
-
-        return subject_to_fedora_uri.values()
+##            print("Trying to create {}".format(fedora_subject))
+##            self.fedora.create(
+##                str(fedora_subject),
+##                new_graph)
+            bf_graphs.append(new_graph)
+        return bf_graphs
+##        return subject_to_fedora_uri.values()
 
 
 
@@ -700,6 +706,52 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             pass
         return output
 
+    def __process_marc__(self, record):
+        #! Grabs bibnumber specific to III MARC records, should be made more
+        #! generic for different legacy ILS
+        bib_number = record['907']['a']
+        sparql_template = Template("""SELECT ?x
+        WHERE { ?x <$predicate> "$value" }""")
+        sparql = sparql_template.substitute(
+            rdflib.RDFS.label,
+            bib_number)
+        work_search = urllib.request.Request('/'.join([self.fedora.base_url,
+                                                       'fcr:sparql']),
+                                             data=sparql.encode(),
+                                             method='POST')
+        work_search.add_header("Content-Type", "application/sparql-query")
+        work_search_response = urllib.request.urlopen(work_search)
+        work_result = work_search_response.read().decode().strip().split("\n")
+        if len(work_result) == 2 and len(work_result[1]) > 1:
+            work_url = work_result[1].replace(">","").replace("<","")
+            return rdflib.URIRef(work_url)
+        try:
+            marc21 = record.as_marc()
+        except UnicodeEncodeError:
+            record.force_utf8 = True
+            marc21 = record.as_marc()
+        marc_url = '/'.join([
+                        self.fedora.base_url,
+                        'rest',
+                        'marc',
+                        str(ObjectId())])
+        marc_uri = rdflib.URIRef(marc_url)
+        marc_request = urllib.request.Request(
+            '/'.join([marc_url, 'fcr:content']),
+            data=marc21,
+            method='POST')
+        urllib.request.urlopen(marc_request)
+        marc_data = rdflib.Graph()
+
+        marc_data.add((marc_uri, rdflib.RDFS.label, bib_number))
+        marc_update = urllib.request.Request(
+            marc_url,
+            data=marc_data.serialize(format='turtle'),
+            method='PUT')
+        marc_update.add_header('Accept', 'text/turtle')
+        marc_update.add_header('Content-Type', 'text/turtle')
+        urllib.request.urlopen(marc_update)
+        return marc_uri
 
     def __process_title__(self, title, graph):
         """Internal method takes title subject and a BIBFRAME graph and either
@@ -889,17 +941,17 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             field001 = pymarc.Field('001')
             field001.data = str(unique_id).split("-")[0]
             record.add_field(field001)
-##        marc_id = self.__get_or_add_marc__(record)
-##        marc_xml = etree.XML(pymarc.record_to_xml(record, namespace=True))
-
-##        # if a BIBFRAME Work exists for the MARC record, skip query
-##        result = self.mongo_client.bibframe.Work.find_one(
-##            {"derivedFrom": marc_id},
-##            {"_id":1})
-##        if result is None:
+        marc_uri = self.__process_marc__(record)
         marc_xml = pymarc.record_to_xml(record, namespace=True)
+        derived_from = rdflib.URIRef('http://bibframe.org/vocab/derivedFrom')
         try:
             bibframe_graph = self.__xquery_chain__(marc_xml)
+            for subject, obj in bibframe_graph.subject_objects(
+                predicate=derived_from):
+                bibframe_graph.set(
+                    (subject,
+                    derived_from,
+                    marc_uri))
             self.__decompose_bf_graph__(bibframe_graph)
             bibframe_graph.close()
         except:
