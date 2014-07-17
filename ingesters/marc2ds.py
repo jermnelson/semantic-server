@@ -10,6 +10,7 @@
 # Licence:     MIT
 #-------------------------------------------------------------------------------
 import datetime
+import hashlib
 import json
 import pymarc
 import os
@@ -37,6 +38,7 @@ except ImportError:
 from bson import ObjectId
 ##import flask_schema_org.models as schema_models
 
+BIBFRAME_NS = rdflib.Namespace('http://bibframe.org/vocab/')
 
 def __get_fields_subfields__(marc_rec,
                              fields,
@@ -286,7 +288,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         Args:
             baseuri -- Base URI, defaults to http://catalog/
             marc21 -- MARC21 file
-            mongo_client -- MongoDB client
+            fedora --
             jar_location -- Complete path to Saxon jar file
             xqy_location -- Complete path to saxon.xqy from bibframe
 
@@ -429,18 +431,39 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                     type_of,
                     str(ObjectId())])
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
+        # Add labels to all titles
+        titles = [title for title in graph.subjects(
+                    predicate=rdflib.RDF.type,
+                    object=BIBFRAME_NS.Title)]
+        for title in titles:
+            title_vals = [graph.value(
+                             subject=title,
+                             predicate=BIBFRAME_NS.titleValue) or "",
+                          graph.value(
+                             subject=title,
+                             predicate=BIBFRAME_NS.subtitle) or ""]
+            graph.add((title,
+                       rdflib.RDFS.label,
+                       rdflib.Literal(" ".join(title_vals))))
         # Now iterate through each subject's triples and creating a graph for
         # adding an object to Fedora
         bf_graphs = []
         for subject in subjects:
             if 'identifier' in str(subject):
                 continue
+            existing_graph = self.__dedup_bibframe__(subject, graph)
+            if existing_graph:
+                subject_to_fedora_uri[subject] = existing_graph
+                bf_graphs.append(
+                    rdflib.Graph().parse(str(existing_graph)))
+                continue
             new_graph = rdflib.Graph()
             new_graph.namespace_manager.bind('bf',
-                rdflib.Namespace('http://bibframe.org/vocab'))
+                rdflib.Namespace('http://bibframe.org/vocab/'))
+            new_graph.namespace_manager.bind("mads",
+                rdflib.Namespace('http://www.loc.gov/mads/rdf/v1#'))
             fedora_subject = subject_to_fedora_uri.get(subject)
             for predicate, obj in graph.predicate_objects(subject=subject):
-                print(fedora_subject, predicate, obj)
                 if 'isbn' in predicate: # or 'issn' in predicate:
                     new_graph.add(
                         (fedora_subject,
@@ -468,6 +491,52 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             bf_graphs.append(new_graph)
         return bf_graphs
 ##        return subject_to_fedora_uri.values()
+
+    def __dedup_sparql__(self, predicate, value):
+        sparql_template = Template("""SELECT ?x
+        WHERE { ?x <$predicate> "$value" }""")
+        sparql = sparql_template.substitute(
+            predicate=predicate,
+            value=value)
+        http_request = urllib.request.Request(
+            '/'.join([self.fedora.base_url,
+                      'rest',
+                      'fcr:sparql']),
+            data=sparql.encode(),
+            method='POST',
+            headers={"Content-Type": "application/sparql-query"})
+        http_response = urllib.request.urlopen(http_request)
+        search_result = http_response.read().decode().strip().split("\n")
+        if len(search_result) == 2 and len(search_result[1]) > 1:
+            entity_url = search_result[1].replace(">","").replace("<","")
+            return rdflib.URIRef(entity_url)
+
+
+    def __dedup_bibframe__(self, subject, graph):
+        existing_bibframe = None
+        value = graph.value(
+            subject=subject,
+            predicate=BIBFRAME_NS.authorizedAccessPoint)
+        if value:
+            existing_bibframe = self.__dedup_sparql__(
+                BIBFRAME_NS.authorizedAccessPoint,
+                value)
+        if not value:
+            value = graph.value(
+                subject=subject,
+                predicate=rdflib.RDFS.label)
+            if value:
+                existing_bibframe = self.__dedup_sparql__(
+                    rdflib.RDFS.label,
+                    value)
+        return existing_bibframe
+
+
+    def __dedup_marc__(self, record):
+        bib_number = record['907']['a'][1:-1] # III MARC specific sys number
+        existing_marc = self.__dedup_sparql__(rdflib.RDFS.label, bib_number)
+        if not existing_marc is None:
+            return existing_marc
 
 
 
@@ -613,118 +682,29 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             return bibframe_type
         return 'Resource' # Most general BIBFRAME type if no match is made
 
-
-    def __mongodbize_graph__(self, graph, marc_db_id=None):
-        """Internal method takes BIBFRAME rdflib.Graph and ingests into MongoDB
-
-        Args:
-            graph (rdflib.Graph): BIBFRAME graph
-            marc_db_id (str): String of MARC21 MongoDB ID
-
-        Returns:
-            str: String of MongoDB ID of primary BIBFRAME Work
-        """
-##        titles = self.__process_titles__(graph)
-##        instances = self.__process_instances__(graph)
-        for subject in graph.subjects():
-            if not str(subject) in self.graph_ids:
-                self.__get_or_add_entity__(subject, graph, marc_db_id)
-
-
-    def __process_subject__(self, subject, graph):
-        def get_str_or_list(name, value):
-            if name in doc:
-                if type(doc[name]) == list:
-                    doc[name].append(value)
-                else:
-                    doc[name] = [doc[name],]
-            else:
-                doc[name] = value
-        doc = {}
-        for p,o in graph.predicate_objects(subject):
-            if p == MARC21toBIBFRAMEIngester.RDF_TYPE_URI:
-                doc['@type'] = o.split("/")[-1]
-            if str(p).startswith('http://bibframe'):
-                bf_property = p.split("/")[-1]
-                if type(o) == rdflib.Literal:
-                    get_str_or_list(bf_property, str(o))
-                elif [rdflib.BNode, rdflib.URIRef].count(type(o)):
-                    get_str_or_list(bf_property, self.__process_subject__(o))
-        collection = self.__get_collection__(subject, graph)
-        subject_id = collection.insert(doc)
-        self.graph_ids[str(subject)] = subject_id
-        return str(subject_id)
-
-    def __process_instances__(self, graph):
-        """Internal method takes BIBFRAME graph extracts Instances, and returns
-        a dictionary of graph URIs with Mongo IDs from the Semantic Server.
-
-        Args:
-            graph (rdflib.Graph): BIBFRAME graph
-
-        Returns:
-            dict: Dictionary of graph subject URIs mapped to Mongo IDs
-        """
-        output = {}
-        for subject in graph.subjects():
-            subject_type = self.__get_type__(subject, graph)
-            if subject_type == 'Instance':
-                output[str(subject)] = self.__get_or_add_entity__(subject, graph)
-            else:
-                name = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES.get(
-                            subject_type, '')
-                if name.startswith('Instance'):
-                    output[str(subject)] = self.__get_or_add_entity__(
-                                                subject,
-                                                graph)
-        return output
-
-    def __process_language__(self, language):
-        """Internal method takes a language URIRef, attempts retrival of the
-        language label.
-
-        Args:
-            language (rdflib.URIRef): Language URIRef
-
-        Returns:
-            dict: Dictionary with uri and label
-        """
-        authoritativeLabel = "http://www.loc.gov/mads/rdf/v1#authoritativeLabel"
-        uri = str(language)
-        output = {'@id': uri}
-        if uri in self.language_labels:
-            return self.language_labels.get(uri)
+    def __process_bibframe__(self, graph):
+        # This should work because each graph only has one subject
+        bf_url = str(next(graph.subjects()))
+        bf_request = urllib.request.Request(
+            bf_url,
+            data=graph.serialize(format='turtle'),
+            method='PUT')
+        bf_request.add_header('Accept', 'text/turtle')
+        bf_request.add_header('Content-Type', 'text/turtle')
         try:
-            lang_json = json.load(urllib.request.urlopen("{}.json".format(uri)))
-            if lang_json is not None and authoritativeLabel in lang_json[0]:
-                for lang in lang_json[0][authoritativeLabel]:
-                    if lang.get('@language','').startswith('en'):
-                        output['label'] = lang['@value']
-            self.language_labels[uri] = output
-        except (ValueError, urllib2.HTTPError):
-            # URL not found or JSON malformed
-            pass
-        return output
+            bf_response = urllib.request.urlopen(bf_request)
+        except urllib.error.HTTPError:
+            print("Could not put {}".format(bf_url))
+            raise ValueError("HttpError")
+
+
 
     def __process_marc__(self, record):
         #! Grabs bibnumber specific to III MARC records, should be made more
         #! generic for different legacy ILS
-        bib_number = record['907']['a']
-        sparql_template = Template("""SELECT ?x
-        WHERE { ?x <$predicate> "$value" }""")
-        sparql = sparql_template.substitute(
-            rdflib.RDFS.label,
-            bib_number)
-        work_search = urllib.request.Request('/'.join([self.fedora.base_url,
-                                                       'fcr:sparql']),
-                                             data=sparql.encode(),
-                                             method='POST')
-        work_search.add_header("Content-Type", "application/sparql-query")
-        work_search_response = urllib.request.urlopen(work_search)
-        work_result = work_search_response.read().decode().strip().split("\n")
-        if len(work_result) == 2 and len(work_result[1]) > 1:
-            work_url = work_result[1].replace(">","").replace("<","")
-            return rdflib.URIRef(work_url)
+        existing_work = self.__dedup_marc__(record)
+        if existing_work is not None:
+            return existing_work
         try:
             marc21 = record.as_marc()
         except UnicodeEncodeError:
@@ -742,8 +722,9 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             method='POST')
         urllib.request.urlopen(marc_request)
         marc_data = rdflib.Graph()
-
-        marc_data.add((marc_uri, rdflib.RDFS.label, bib_number))
+        marc_data.add((marc_uri,
+                       rdflib.RDFS.label,
+                       rdflib.Literal(record['907']['a'][1:-1])))
         marc_update = urllib.request.Request(
             marc_url,
             data=marc_data.serialize(format='turtle'),
@@ -870,41 +851,8 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         bf_graph.parse(data=rdf_xml, format='xml')
         return bf_graph
 
-    def __xquery_chain__process__(self, marc_xml):
-        """Internal method takes a MARC XML document, serializes to temp
-        location, runs a Java subprocess with Saxon to convert from MARC XML to
-        a temp RDF XML version and then returns a BIBFRAME graph.
-
-        Args:
-            marc_xml (etree.XML): XML of MARC record
-
-        Returns:
-            rdflib.Graph:  BIBFRAME graph of rdf xml from parsed xquery
-        """
-        xml_file = NamedTemporaryFile(delete=False)
-        xml_file.write(marc_xml)
-        xml_file.close()
-        xml_filepath = r"{}".format(xml_file.name).replace("\\","/")
-        java_command = ['java',
-                     '-cp',
-                     self.saxon_jar_location,
-                     'net.sf.saxon.Query',
-                     self.saxon_xqy_location,
-                     'marcxmluri={}'.format(xml_filepath),
-                     'baseuri={}'.format(self.baseuri),
-                     'serialization=rdfxml']
-        process = subprocess.Popen(java_command,
-                                   stdout=subprocess.PIPE)
-        raw_bf_rdf, err = process.communicate()
-        bf_graph = Graph()
-        bf_graph.parse(data=raw_bf_rdf, format='xml')
-        os.remove(xml_file.name)
-        return bf_graph
-
-
     def batch(self, marc_filepath):
-        marc_reader = pymarc.MARCReader(open(marc_filepath),
-            to_unicode=True)
+        marc_reader = pymarc.MARCReader(open(marc_filepath, 'rb'))
         start_time = datetime.datetime.utcnow()
         print("Started MARC21 batch at {}".format(start_time.isoformat()))
         for i,record in enumerate(marc_reader):
@@ -941,8 +889,8 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             field001 = pymarc.Field('001')
             field001.data = str(unique_id).split("-")[0]
             record.add_field(field001)
-        marc_uri = self.__process_marc__(record)
         marc_xml = pymarc.record_to_xml(record, namespace=True)
+        marc_uri = self.__process_marc__(record)
         derived_from = rdflib.URIRef('http://bibframe.org/vocab/derivedFrom')
         try:
             bibframe_graph = self.__xquery_chain__(marc_xml)
@@ -952,7 +900,18 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                     (subject,
                     derived_from,
                     marc_uri))
-            self.__decompose_bf_graph__(bibframe_graph)
+            all_graphs = self.__decompose_bf_graph__(bibframe_graph)
+            for graph in all_graphs:
+                graph_url = str(next(graph.subjects()))
+                add_stub_request = urllib.request.Request(
+                    graph_url,
+                    method='PUT')
+                try:
+                    urllib.request.urlopen(add_stub_request)
+                except:
+                    print("Tried to add stub for {}".format(graph_url))
+            for graph in all_graphs:
+                self.__process_bibframe__(graph)
             bibframe_graph.close()
         except:
             print("Error with record {}".format(sys.exc_info()[0]))
