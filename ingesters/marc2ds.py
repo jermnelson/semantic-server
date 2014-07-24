@@ -407,7 +407,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
 
-    def __decompose_bf_graph__(self, graph):
+    def __decompose_bf_graph__(self, graph, workspace=None):
         """Internal method takes a BIBFRAME RDF graph and creates Fedora objects
         for each unique subject in the graph
 
@@ -427,9 +427,13 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                     type_of)
             fedora_uri = "/".join([
                     self.fedora.base_url,
-                    'rest',
-                    type_of,
-                    str(ObjectId())])
+                    'rest'])
+            if workspace is not None:
+                fedora_uri = "/".join([fedora_uri, workspace])
+            fedora_uri  = "/".join(
+                [fedora_uri,
+                type_of,
+                str(ObjectId())])
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
         # Add labels to all titles
         titles = [title for title in graph.subjects(
@@ -459,7 +463,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                 continue
             new_graph = rdflib.Graph()
             new_graph.namespace_manager.bind('bf',
-                rdflib.Namespace('http://bibframe.org/vocab/'))
+                BIBFRAME_NS)
             new_graph.namespace_manager.bind("mads",
                 rdflib.Namespace('http://www.loc.gov/mads/rdf/v1#'))
             fedora_subject = subject_to_fedora_uri.get(subject)
@@ -872,12 +876,13 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
 
 
 
-    def ingest(self, record):
+    def ingest(self, record, workspace=None):
         """Method runs entire tool-chain to ingest a single MARC record into
         Datastore.
 
         Args:
             record (pymarc.Record): MARC21 record
+            workspace (str): Fedora4 workspace to ingest records into
 
         Returns:
             list: MongoID
@@ -900,7 +905,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                     (subject,
                     derived_from,
                     marc_uri))
-            all_graphs = self.__decompose_bf_graph__(bibframe_graph)
+            all_graphs = self.__decompose_bf_graph__(bibframe_graph, workspace)
             for graph in all_graphs:
                 graph_url = str(next(graph.subjects()))
                 add_stub_request = urllib.request.Request(
