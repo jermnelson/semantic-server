@@ -418,16 +418,24 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             list: List of new Fedora objects created from the graph
         """
         subject_to_fedora_uri = {}
-        subjects = set([subject for subject in graph.subjects()])
+
+        subjects = list(set([subject for subject in graph.subjects()]))
         # Creates Fedora URI stubs for each unique subject in the RDF graph
         for subject in subjects:
-            type_of = graph.value(subject=subject, predicate=rdflib.RDF.type).split("/")[-1]
+            type_of_object = graph.value(
+                subject=subject,
+                predicate=rdflib.RDF.type)
+            if type_of_object is not None:
+                type_of = type_of_object.split("/")[-1]
+            if type(subject) == rdflib.BNode:
+                type_of = 'Authority'
             if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
                 type_of = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES.get(
                     type_of)
             fedora_uri = "/".join([
                     self.fedora.base_url,
                     'rest'])
+
             if workspace is not None:
                 fedora_uri = "/".join([fedora_uri, workspace])
             fedora_uri  = "/".join(
@@ -435,6 +443,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                 type_of,
                 str(ObjectId())])
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
+
         # Add labels to all titles
         titles = [title for title in graph.subjects(
                     predicate=rdflib.RDF.type,
@@ -467,6 +476,8 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             new_graph.namespace_manager.bind("mads",
                 rdflib.Namespace('http://www.loc.gov/mads/rdf/v1#'))
             fedora_subject = subject_to_fedora_uri.get(subject)
+            if fedora_subject is None:
+                print("Why {} {}".format(fedora_subject, subject))
             for predicate, obj in graph.predicate_objects(subject=subject):
                 if 'isbn' in predicate: # or 'issn' in predicate:
                     new_graph.add(
@@ -518,14 +529,17 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
 
     def __dedup_bibframe__(self, subject, graph):
         existing_bibframe = None
-        value = graph.value(
-            subject=subject,
-            predicate=BIBFRAME_NS.authorizedAccessPoint)
-        if value:
-            existing_bibframe = self.__dedup_sparql__(
-                BIBFRAME_NS.authorizedAccessPoint,
-                value)
-        if not value:
+        authorizedAccessPoints = [o for o in graph.objects(
+            subject,
+            BIBFRAME_NS.authorizedAccessPoint)]
+        if len(authorizedAccessPoints) > 0:
+            for authAccessPt in authorizedAccessPoints:
+                existing_bibframe = self.__dedup_sparql__(
+                    BIBFRAME_NS.authorizedAccessPoint,
+                    authAccessPt)
+                if existing_bibframe is not None:
+                    break
+        if not existing_bibframe:
             value = graph.value(
                 subject=subject,
                 predicate=rdflib.RDFS.label)
