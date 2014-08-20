@@ -7,21 +7,34 @@
 #
 # Created:     2014/06/12
 # Copyright:   (c) Jeremy Nelson, Colorado College 2014
-# Licence:     <your licence>
+# Licence:     MIT
 #-------------------------------------------------------------------------------
 import json
+import rdflib
+import sys
+import urllib
+
 from flask import abort, Flask, request
 from flask.ext.restful import Resource, Api
 ##from flask_fedora_commons import FedoraCommons
-import sys
+
 sys.path.append("C:\\Users\\jernelson\\Development\\flask-fedora\\")
 from flask_fedora_commons.repository import Repository
+
+BF_NS = rdflib.Namespace('http://bibframe.org/vocab/')
+SCHEMA_NS = rdflib.Namespace('http://schema.org/')
+
+CONTEXT={
+    "@vocab": "http://bibframe.org/vocab/",
+    "fcrepo": "http://fedora.info/definitions/v4/repository#",
+    "fedora": "http://fedora.info/definitions/v4/rest-api#",
+    "@language": "en"}
 
 
 catalog = Flask(__name__)
 catalog.config.from_pyfile('server.cfg')
 api = Api(catalog)
-fedora = Repository()
+fedora = Repository(base_url=catalog.config.get('FEDORA_HOST'))
 ##fedora = FedoraCommons(catalog)
 
 
@@ -38,12 +51,17 @@ class Entity(Resource):
         Returns:
             dict: Dictionary of key-value or predicate-object for this entity.
         """
-        entity = fedora.read("{}/{}".format(entity_type, entity_id))
+        fedora_url = urllib.parse.urljoin(
+            catalog.config.get('FEDORA_HOST'),
+            "/rest/{}/{}".format(entity_type, entity_id))
+        entity = fedora.read(fedora_url)
         if entity is None:
+
             return abort(404)
         else:
             raw_json = json.loads(
-                entity.serialize(format='json-ld').decode('utf-8'))
+                entity.serialize(format='json-ld',
+                                 context=CONTEXT).decode('utf-8'))
             return {entity_id: raw_json}
 
 
