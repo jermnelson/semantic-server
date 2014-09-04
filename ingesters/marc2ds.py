@@ -40,6 +40,11 @@ from bson import ObjectId
 
 BIBFRAME_NS = rdflib.Namespace('http://bibframe.org/vocab/')
 
+CONTEXT = {'fedora': 'http://fedora.info/definitions/v4/rest-api#',
+    'fedorarelsext': 'http://fedora.info/definitions/v4/rels-ext#',
+    'madsrdf': 'http://www.loc.gov/mads/rdf/v1#',
+    'bf': 'http://bibframe.org/vocab/',
+    'mads': 'http://www.loc.gov/standards/mads/'}
 def __get_fields_subfields__(marc_rec,
                              fields,
                              subfields,
@@ -294,6 +299,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
 
         """
         self.baseuri = kwargs.get('baseuri')
+        self.elastic_search = kwargs.get('es', None)
         self.fedora = kwargs.get('fedora')
         self.saxon_jar_location = kwargs.get('jar_location', None)
         self.saxon_xqy_location = kwargs.get('xqy_location', None)
@@ -716,6 +722,43 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             raise ValueError("HttpError")
 
 
+    def __index_into_es__(self, graph_url):
+        """Method indexes the graph as serialized JSON into an Elastic Search
+        instance.
+
+        Args:
+            graph_url (str): URL of graph's subject, used ad ID for Elastic
+                             search id
+            graph (rdflib.Graph): Decomposed BIBFRAME graph
+        """
+        if self.elastic_search is None:
+            return
+        graph = rdflib.Graph().parse(graph_url)
+        subject = next(graph.subjects())
+        type_of_object = graph.value(
+                subject=subject,
+                predicate=rdflib.RDF.type)
+        if type_of_object is not None:
+            type_of = type_of_object.split("/")[-1]
+            if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
+                type_of = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES[type_of]
+        else:
+            type_of = 'Resource' # Base class for all of BIBFRAME classes
+        graph_json = json.loads(graph.serialize(
+            format='json-ld',
+            context=CONTEXT).decode())
+        if type(graph_json) == list:
+            graph_json = graph_json[0]
+        try:
+            result = self.elastic_search.index(
+                index='bibframe',
+                doc_type=type_of,
+                id=graph_url,
+                body=graph_json)
+        except Exception as exp:
+            print(exp)
+            print("Error with {}".format(graph_json))
+
 
     def __process_marc__(self, record):
         #! Grabs bibnumber specific to III MARC records, should be made more
@@ -911,30 +954,54 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         marc_xml = pymarc.record_to_xml(record, namespace=True)
         marc_uri = self.__process_marc__(record)
         derived_from = rdflib.URIRef('http://bibframe.org/vocab/derivedFrom')
-        try:
-            bibframe_graph = self.__xquery_chain__(marc_xml)
-            for subject, obj in bibframe_graph.subject_objects(
-                predicate=derived_from):
-                bibframe_graph.set(
-                    (subject,
-                    derived_from,
-                    marc_uri))
-            all_graphs = self.__decompose_bf_graph__(bibframe_graph, workspace)
-            for graph in all_graphs:
-                graph_url = str(next(graph.subjects()))
-                add_stub_request = urllib.request.Request(
-                    graph_url,
-                    method='PUT')
-                try:
-                    urllib.request.urlopen(add_stub_request)
-                except:
-                    print("Tried to add stub for {}".format(graph_url))
-            for graph in all_graphs:
-                self.__process_bibframe__(graph)
-            bibframe_graph.close()
-        except:
-            print("Error with record {}".format(sys.exc_info()[0]))
-
+##        try:
+##            bibframe_graph = self.__xquery_chain__(marc_xml)
+##            for subject, obj in bibframe_graph.subject_objects(
+##                predicate=derived_from):
+##                bibframe_graph.set(
+##                    (subject,
+##                    derived_from,
+##                    marc_uri))
+##            all_graphs = self.__decompose_bf_graph__(bibframe_graph, workspace)
+##            for graph in all_graphs:
+##                graph_url = str(next(graph.subjects()))
+##                add_stub_request = urllib.request.Request(
+##                    graph_url,
+##                    method='PUT')
+##                try:
+##                    urllib.request.urlopen(add_stub_request)
+##                except:
+##                    print("Tried to add stub for {}".format(graph_url))
+##            for graph in all_graphs:
+##                self.__process_bibframe__(graph)
+##                index_result = self.__index_into_es__(
+##                    str(next(graph.subjects())),
+##                    graph)
+##            bibframe_graph.close()
+##        except:
+##            print("Error with record {}".format(sys.exc_info()[0]))
+        bibframe_graph = self.__xquery_chain__(marc_xml)
+        for subject, obj in bibframe_graph.subject_objects(
+            predicate=derived_from):
+            bibframe_graph.set(
+                (subject,
+                derived_from,
+                marc_uri))
+        all_graphs = self.__decompose_bf_graph__(bibframe_graph, workspace)
+        for graph in all_graphs:
+            graph_url = str(next(graph.subjects()))
+            add_stub_request = urllib.request.Request(
+                graph_url,
+                method='PUT')
+            try:
+                urllib.request.urlopen(add_stub_request)
+            except:
+                print("Tried to add stub for {}".format(graph_url))
+        for graph in all_graphs:
+            self.__process_bibframe__(graph)
+            index_result = self.__index_into_es__(
+                str(next(graph.subjects())))
+        bibframe_graph.close()
 
 class MARC21toSchemaOrgIngester(MARC21Ingester):
     """
