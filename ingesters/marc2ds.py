@@ -40,11 +40,37 @@ from bson import ObjectId
 
 BIBFRAME_NS = rdflib.Namespace('http://bibframe.org/vocab/')
 
-CONTEXT = {'fedora': 'http://fedora.info/definitions/v4/rest-api#',
-    'fedorarelsext': 'http://fedora.info/definitions/v4/rels-ext#',
-    'madsrdf': 'http://www.loc.gov/mads/rdf/v1#',
-    'bf': 'http://bibframe.org/vocab/',
-    'mads': 'http://www.loc.gov/standards/mads/'}
+##CONTEXT = {'fedora': 'http://fedora.info/definitions/v4/rest-api#',
+##    'fedorarelsext': 'http://fedora.info/definitions/v4/rels-ext#',
+##    'madsrdf': 'http://www.loc.gov/mads/rdf/v1#',
+##    'bf': 'http://bibframe.org/vocab/',
+##    'mads': 'http://www.loc.gov/standards/mads/'}
+
+CONTEXT = {
+    "authz": "http://fedora.info/definitions/v4/authorization#",
+    "bf": "http://bibframe.org/vocab/",
+    "dc": "http://purl.org/dc/elements/1.1/",
+    "fcrepo": "http://fedora.info/definitions/v4/repository#",
+    "fedora": "http://fedora.info/definitions/v4/rest-api#",
+    "fedoraconfig": "http://fedora.info/definitions/v4/config#",
+    "fedorarelsext": "http://fedora.info/definitions/v4/rels-ext#",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "image": "http://www.modeshape.org/images/1.0",
+    "mads": "http://www.loc.gov/mads/rdf/v1#",
+    "mix": "http://www.jcp.org/jcr/mix/1.0",
+    "mode": "http://www.modeshape.org/1.0",
+    "nt": "http://www.jcp.org/jcr/nt/1.0",
+    "premis": "http://www.loc.gov/premis/rdf/v1#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "schema": "http://schema.org/",
+    "sv": "http://www.jcp.org/jcr/sv/1.0",
+    "test": "info:fedora/test/",
+    "xml": "http://www.w3.org/XML/1998/namespace",
+    "xmlns": "http://www.w3.org/2000/xmlns/",
+    "xs": "http://www.w3.org/2001/XMLSchema",
+    "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
+
 def __get_fields_subfields__(marc_rec,
                              fields,
                              subfields,
@@ -253,6 +279,8 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
          'v1#PersonalName': 'Person', # MADS mapping
          'v1#NameTitle': 'Authority', # MADS mapping
          'v1#Topic': 'Topic', # MADS mapping
+         'ldp#DirectContainer': 'Resource',
+         'ldp#Container': 'Resource',
          'Archival': 'Instance',
          'Audio': 'Work',
          'Cartography': 'Work',
@@ -261,6 +289,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
          'Electronic': 'Instance',
          'Family': 'Authority',
          'HeldMaterial': 'Annotation',
+         'Identifier': 'Resource',
          'Integrating': 'Instance',
          'Jurisdiction': 'Authority',
          'Manuscript': 'Instance',
@@ -413,6 +442,33 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         self.graph_ids[str(subject)] = str(entity_id)
         return entity_id
 
+    def __calculate_bibframe_shard__(self, bf_type, workspace=None):
+        fcrepo = rdflib.Namespace(CONTEXT.get("fcrepo"))
+        bf_uri = "/".join([
+                    self.fedora.base_url,
+                    'rest'])
+        if workspace is not None:
+            bf_uri = "/".join([bf_uri, workspace])
+
+        bf_uri = rdflib.URIRef("/".join([bf_uri, bf_type]))
+        try:
+            bf_entities = rdflib.Graph().parse(str(bf_uri))
+        except urllib.error.HTTPError:
+            return 1
+        children = [obj for obj in bf_entities.objects(
+                    subject=bf_uri,
+                    predicate=fcrepo.hasChild)]
+        last_shard =  max([int(x.split("/")[-1]) for x in children])
+        last_shard_uri = rdflib.URIRef('/'.join([bf_uri, str(last_shard)]))
+        last_shard_graph = rdflib.Graph().parse(str(last_shard_uri))
+        shard_children = set([obj for obj in last_shard_graph.objects(
+            subject=last_shard_uri,
+            predicate=fcrepo.hasChild)])
+        if len(shard_children) < 5000:
+            return last_shard
+        else:
+            return last_shard+1
+
     def __decompose_bf_graph__(self, graph, workspace=None):
         """Internal method takes a BIBFRAME RDF graph and creates Fedora objects
         for each unique subject in the graph
@@ -441,12 +497,13 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             fedora_uri = "/".join([
                     self.fedora.base_url,
                     'rest'])
-
+            shard = self.__calculate_bibframe_shard__(type_of, workspace)
             if workspace is not None:
                 fedora_uri = "/".join([fedora_uri, workspace])
             fedora_uri  = "/".join(
                 [fedora_uri,
                 type_of,
+                str(shard),
                 str(ObjectId())])
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
 
@@ -558,9 +615,21 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
 
     def __dedup_marc__(self, record):
         bib_number = record['907']['a'][1:-1] # III MARC specific sys number
-        existing_marc = self.__dedup_sparql__(rdflib.RDFS.label, bib_number)
-        if not existing_marc is None:
-            return existing_marc
+        if self.elastic_search is not None:
+            existing_result = self.elastic_search.search(
+                index='marc',
+                doc_type='mrc',
+                body={"query": { "match": { "rdfs:label": bib_number}}})
+            if existing_result.get('hits').get('total') > 0:
+                # Returns first id
+                return existing_result['hits']['hits'][0]['_id']
+        else:
+            # Uses Fedora 4 very slow SPARQL search look-up
+            existing_marc = self.__dedup_sparql__(rdflib.RDFS.label, bib_number)
+            if not existing_marc is None:
+                return existing_marc
+
+
 
 
 
@@ -735,21 +804,27 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             return
         graph = rdflib.Graph().parse(graph_url)
         subject = next(graph.subjects())
-        type_of_object = graph.value(
+        object_types = graph.objects(
                 subject=subject,
                 predicate=rdflib.RDF.type)
-        if type_of_object is not None:
-            type_of = type_of_object.split("/")[-1]
-            if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
-                type_of = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES[type_of]
-        else:
+        type_of = None
+        for obj_type in object_types:
+            if str(obj_type).startswith("http://bibframe"):
+                type_of = str(obj_type).split("/")[-1]
+                if type_of in MARC21toBIBFRAMEIngester.COLLECTION_CLASSES:
+                    type_of = MARC21toBIBFRAMEIngester.COLLECTION_CLASSES[type_of]
+                break
+        if type_of is None:
             type_of = 'Resource' # Base class for all of BIBFRAME classes
         graph_json = json.loads(graph.serialize(
             format='json-ld',
             context=CONTEXT).decode())
         if type(graph_json) == list:
             graph_json = graph_json[0]
+        if '@context' in graph_json:
+            graph_json.pop('@context')
         try:
+##            print("Trying to index with type_of={}".format(type_of))
             result = self.elastic_search.index(
                 index='bibframe',
                 doc_type=type_of,
@@ -757,42 +832,27 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                 body=graph_json)
         except Exception as exp:
             print(exp)
+            print("Trying to index with type_of={}".format(type_of))
             print("Error with {}".format(graph_json))
-
 
     def __process_marc__(self, record):
         #! Grabs bibnumber specific to III MARC records, should be made more
         #! generic for different legacy ILS
-        existing_work = self.__dedup_marc__(record)
-        if existing_work is not None:
-            return existing_work
+##        existing_work = self.__dedup_marc__(record)
+##        if existing_work is not None:
+##            return existing_work
         try:
             marc21 = record.as_marc()
         except UnicodeEncodeError:
             record.force_utf8 = True
             marc21 = record.as_marc()
-        marc_url = '/'.join([
-                        self.fedora.base_url,
-                        'rest',
-                        'marc',
-                        str(ObjectId())])
-        marc_uri = rdflib.URIRef(marc_url)
+        marc_uri = self.fedora.create()
         marc_request = urllib.request.Request(
-            '/'.join([marc_url, 'fcr:content']),
+            '/'.join([marc_uri, 'fcr:content']),
             data=marc21,
             method='POST')
         urllib.request.urlopen(marc_request)
-        marc_data = rdflib.Graph()
-        marc_data.add((marc_uri,
-                       rdflib.RDFS.label,
-                       rdflib.Literal(record['907']['a'][1:-1])))
-        marc_update = urllib.request.Request(
-            marc_url,
-            data=marc_data.serialize(format='turtle'),
-            method='PUT')
-        marc_update.add_header('Accept', 'text/turtle')
-        marc_update.add_header('Content-Type', 'text/turtle')
-        urllib.request.urlopen(marc_update)
+        self.fedora.insert(marc_uri, 'rdfs:label', record['907']['a'][1:-1])
         return marc_uri
 
     def __process_title__(self, title, graph):
