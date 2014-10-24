@@ -71,6 +71,8 @@ CONTEXT = {
     "xs": "http://www.w3.org/2001/XMLSchema",
     "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
 
+FCREPO = rdflib.Namespace(CONTEXT.get('fcrepo'))
+
 def __get_fields_subfields__(marc_rec,
                              fields,
                              subfields,
@@ -500,11 +502,12 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             shard = self.__calculate_bibframe_shard__(type_of, workspace)
             if workspace is not None:
                 fedora_uri = "/".join([fedora_uri, workspace])
-            fedora_uri  = "/".join(
-                [fedora_uri,
-                type_of,
-                str(shard),
-                str(ObjectId())])
+            fedora_uri = self.fedora.create()
+##            fedora_uri  = "/".join(
+##                [fedora_uri,
+##                type_of,
+##                str(shard),
+##                str(ObjectId())])
             subject_to_fedora_uri[subject] = rdflib.URIRef(fedora_uri)
 
         # Add labels to all titles
@@ -618,16 +621,13 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
         if self.elastic_search is not None:
             existing_result = self.elastic_search.search(
                 index='marc',
-                doc_type='mrc',
-                body={"query": { "match": { "rdfs:label": bib_number}}})
+                body={
+                    "query": { "match": { "rdfs:label": bib_number}},
+                    "_source": ["rdfs:label", "owl:sameAs"]})
             if existing_result.get('hits').get('total') > 0:
                 # Returns first id
-                return existing_result['hits']['hits'][0]['_id']
-        else:
-            # Uses Fedora 4 very slow SPARQL search look-up
-            existing_marc = self.__dedup_sparql__(rdflib.RDFS.label, bib_number)
-            if not existing_marc is None:
-                return existing_marc
+                first_hit = existing_result['hits']['hits'][0]
+                return first_hit['_source']['owl:sameAs']
 
 
 
@@ -838,21 +838,42 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
     def __process_marc__(self, record):
         #! Grabs bibnumber specific to III MARC records, should be made more
         #! generic for different legacy ILS
-##        existing_work = self.__dedup_marc__(record)
-##        if existing_work is not None:
-##            return existing_work
+        existing_marc = self.__dedup_marc__(record)
+        if existing_marc is not None:
+            return existing_marc
         try:
             marc21 = record.as_marc()
         except UnicodeEncodeError:
             record.force_utf8 = True
             marc21 = record.as_marc()
-        marc_uri = self.fedora.create()
         marc_request = urllib.request.Request(
-            '/'.join([marc_uri, 'fcr:content']),
+            '/'.join([self.fedora.base_url, 'rest']),
             data=marc21,
             method='POST')
-        urllib.request.urlopen(marc_request)
-        self.fedora.insert(marc_uri, 'rdfs:label', record['907']['a'][1:-1])
+        marc_result = urllib.request.urlopen(marc_request)
+        marc_content_uri = marc_result.read().decode()
+        marc_uri = marc_content_uri.replace('/fcr:content', '')
+        bib_number = record['907']['a'][1:-1]
+        self.fedora.insert(marc_uri, 'rdfs:label', bib_number)
+        if self.elastic_search is not None:
+            marc_graph = rdflib.Graph().parse(marc_uri)
+            marc_body = {
+                "owl:sameAs": marc_uri,
+                "rdfs:label": bib_number,
+                "fcrepo:created": marc_graph.value(
+                                    subject=rdflib.URIRef(marc_uri),
+                                    predicate=FCREPO.created)}
+            self.elastic_search.index(
+                index='marc',
+                doc_type='marc21',
+                id=str(marc_graph.value(
+                    subject=rdflib.URIRef(marc_uri),
+                    predicate=FCREPO.uuid)),
+                body=marc_body)
+        return marc_uri
+
+
+
         return marc_uri
 
     def __process_title__(self, title, graph):
@@ -1012,7 +1033,7 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
             field001.data = str(unique_id).split("-")[0]
             record.add_field(field001)
         marc_xml = pymarc.record_to_xml(record, namespace=True)
-        marc_uri = self.__process_marc__(record)
+        marc_uri = rdflib.URIRef(self.__process_marc__(record))
         derived_from = rdflib.URIRef('http://bibframe.org/vocab/derivedFrom')
 ##        try:
 ##            bibframe_graph = self.__xquery_chain__(marc_xml)
@@ -1048,19 +1069,19 @@ class MARC21toBIBFRAMEIngester(MARC21Ingester):
                 derived_from,
                 marc_uri))
         all_graphs = self.__decompose_bf_graph__(bibframe_graph, workspace)
-        for graph in all_graphs:
-            graph_url = str(next(graph.subjects()))
-            add_stub_request = urllib.request.Request(
-                graph_url,
-                method='PUT')
-            try:
-                urllib.request.urlopen(add_stub_request)
-            except:
-                print("Tried to add stub for {}".format(graph_url))
+##        for graph in all_graphs:
+##            graph_url = str(next(graph.subjects()))
+##            add_stub_request = urllib.request.Request(
+##                graph_url,
+##                method='PUT')
+##            try:
+##                urllib.request.urlopen(add_stub_request)
+##            except:
+##                print("Tried to add stub for {}".format(graph_url))
         for graph in all_graphs:
             self.__process_bibframe__(graph)
-            index_result = self.__index_into_es__(
-                str(next(graph.subjects())))
+##            index_result = self.__index_into_es__(
+##                str(next(graph.subjects())))
         bibframe_graph.close()
 
 class MARC21toSchemaOrgIngester(MARC21Ingester):
