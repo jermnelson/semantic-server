@@ -12,6 +12,20 @@ import urllib.request
 from elasticsearch import Elasticsearch
 from .utilities.fuseki import Fuseki
 
+class Info(object):
+    """Basic information about available repository services"""
+
+    def __init__(self, config):
+        self.config = config
+
+    def on_get(self,  req, resp):
+        resp.status = falcon.HTTP_200
+        resp.body = json.dumps(
+            {"services": self.config}
+        )
+
+
+
 class Search(object):
     """Search Repository"""
 
