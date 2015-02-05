@@ -1,17 +1,17 @@
 __author__ = "Jeremy Nelson"
 
-import os
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-VERSION_PATH = os.path.join(os.path.dirname(__file__), "VERSION")
-if not os.path.exists(VERSION_PATH):
-    VERSION_PATH = os.path.join(BASE_DIR, "VERSION")
-with open(VERSION_PATH) as version:
-    __version__ = version.read().strip()
+global __version__
+global config
 
+import os
 import configparser
 import falcon
 
+CURRENT_DIR = os.path.dirname(__file__)
+BASE_DIR = os.path.dirname(CURRENT_DIR)
+
 from elasticsearch import Elasticsearch
+from werkzeug.serving import run_simple
 
 try:
     from .repository import Info, Search
@@ -24,12 +24,36 @@ except SystemError:
     from repository.resources.fedora3 import FedoraObject
     from repository.utilities.migrating.foxml import FoxmlContentHandler
 
-config = configparser.ConfigParser()
-config.read(os.path.join(BASE_DIR, 'server.cfg'))
-if len(config) == 1: # Empty or nonexistent configuration, loads default
-    config.read(os.path.join(BASE_DIR,'default.cfg'))
 
-from werkzeug.serving import run_simple
+def set_version():
+    version_path = os.path.join(os.path.dirname(__file__), "VERSION")
+    if not os.path.exists(version_path):
+        version_path = os.path.join(BASE_DIR, "VERSION")
+    if os.path.exists(version_path):
+        with open(version_path) as version:
+            __version__ = version.read().strip()
+    else:
+        __version__ = 'ERROR'
+
+def load_config(config):
+    config_filepath = os.path.join(BASE_DIR, 'server.cfg')
+    if not os.path.exists(config_filepath):
+        config_filepath = os.path.join(CURRENT_DIR, 'server.cfg')
+    if not os.path.exists(config_filepath):
+        config_filepath = os.path.join(BASE_DIR, 'default.cfg')
+    if not os.path.exists(config_filepath):
+        config_filepath = os.path.join(CURRENT_DIR, 'default.cfg')
+    if not os.path.exists(config_filepath):
+        raise ValueError(
+            "Default configuration {} cannot be loaded".format(config_filepath))
+    config.read(config_filepath)
+
+
+set_version()
+
+config = configparser.ConfigParser()
+load_config(config)
+
 api = application = falcon.API()
 
 api.add_route("/info", Info(config))
