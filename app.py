@@ -2,7 +2,10 @@ __author__ = "Jeremy Nelson"
 
 import os
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-with open(os.path.join(BASE_DIR, "VERSION")) as version:
+VERSION_PATH = os.path.join(os.path.dirname(__file__), "VERSION")
+if not os.path.exists(VERSION_PATH):
+    VERSION_PATH = os.path.join(BASE_DIR, "VERSION")
+with open(VERSION_PATH) as version:
     __version__ = version.read().strip()
 
 import configparser
@@ -10,11 +13,16 @@ import falcon
 
 from elasticsearch import Elasticsearch
 
-
-from repository import Info, Search
-from repository.resources.fedora import Resource, Transaction
-from repository.resources.fedora3 import FedoraObject
-from repository.utilities.migrating.foxml import FoxmlContentHandler
+try:
+    from .repository import Info, Search
+    from .repository.resources.fedora import Resource, Transaction
+    from .repository.resources.fedora3 import FedoraObject
+    from .repository.utilities.migrating.foxml import FoxmlContentHandler
+except SystemError:
+    from repository import Info, Search
+    from repository.resources.fedora import Resource, Transaction
+    from repository.resources.fedora3 import FedoraObject
+    from repository.utilities.migrating.foxml import FoxmlContentHandler
 
 config = configparser.ConfigParser()
 config.read(os.path.join(BASE_DIR, 'server.cfg'))
