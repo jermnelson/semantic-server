@@ -14,6 +14,13 @@ class Resource(Repository):
     >> resource = fedora.Resource()
     """
 
+    def __init__(self, config):
+        super(Resource, self).__init__(config)
+        self.rest_url = "{}:{}/rest".format(
+            config['FEDORA']['host'],
+            config['FEDORA']['port'])
+
+
     def on_delete(self, req, resp, id):
         """DELETE Method either deletes one or more predicate and objects from a
         Resource, or if both predicate and object are None, deletes the Resource

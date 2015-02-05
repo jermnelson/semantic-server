@@ -21,7 +21,7 @@ class Info(object):
     def on_get(self,  req, resp):
         resp.status = falcon.HTTP_200
         resp.body = json.dumps(
-            {"services": self.config}
+            {"services": str(self.config)}
         )
 
 
@@ -29,9 +29,13 @@ class Info(object):
 class Search(object):
     """Search Repository"""
 
-    def __init__(self, search_index, triplestore):
-        self.search_index = search_index
-        self.triplestore = triplestore
+    def __init__(self, config):
+        self.search_index = Elasticsearch(
+            [{"host": config["ELASTICSEARCH"]["host"],
+              "port": config["ELASTICSEARCH"]["port"]}])
+        self.triplestore = Fuseki(url="{}:{}".format(
+            config["FUSEKI"]["host"],
+            config["FUSEKI"]["port"]))
 
     def on_get(self, req, resp):
         """Method takes a a phrase, returns the expanded result.
@@ -64,41 +68,27 @@ class Search(object):
 class Repository(object):
     """Base repository object"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, config):
         """Initializes a Repository object.
 
         Keyword arguments:
-            es -- Elastic search instance, default is http://localhost:9200
-            fuseki -- Fuseki instance, default is http://localhost:3030
-            fedora -- Fedora 4 REST url, default is http://localhost:8080/rest/
-            fedora3 -- Fedora 3.+ url, default is
-            admin_user -- Fedora Administrator, defaults to None
-            admin_pwd -- Fedora Password, defaults to None
+            config -- Configuration object
         """
-        self.fedora = kwargs.get('fedora', None)
-        self.fedora3 = kwargs.get('fedora3', None)
-        self.triple_store = kwargs.get('fuseki', Fuseki())
-        self.search = Search(
-            kwargs.get('es', Elasticsearch()),
-            self.triple_store)
+        if 'FEDORA3' in config:
+            admin = config.get('FEDORA3', 'username')
+            admin_pwd = config.get('FEDORA3', 'password')
 
-        if self.fedora and self.fedora3:
-            raise ValueError("Cannot initialize both Fedora 3.+ {} and "\
-                             "Fedora 4 {} in the same repository".format(
-                             self.fedora3,
-                             self.fedora))
-        # Default is a Fedora 4 repository
-        if not self.fedora and not self.fedora3:
-            self.fedora = "http://localhost:8080/rest/"
-        admin = kwargs.get('admin_user', None)
-        admin_pwd = kwargs.get('admin_pwd', None)
+        self.fedora = config['FEDORA']
+        self.search = Search(config)
+        admin = self.fedora.get('username', None)
+        admin_pwd = self.fedora.get('password', None)
         self.opener = None
         # Create a Password manager
         if admin and admin_pwd:
             password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
             password_mgr.add_password(
                 None,
-                self.fedora,
+                "{}:{}".format(self.fedora['host'], self.fedora['port']),
                 admin,
                 admin_pwd)
             handler = urllib.request.HTTPBasicAuthHandler(password_mgr)

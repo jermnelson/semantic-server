@@ -4,6 +4,7 @@ __author__ = "Jeremy Nelson"
 
 import falcon
 import json
+import os
 import rdflib
 import urllib.parse
 from jinja2 import Template
@@ -11,7 +12,8 @@ try:
     import xml.etree.cElementTree as etree
 except ImportError:
     import xml.etree.ElementTree as etree
-from ...resources.fedora3 import ISLANDORA_CONTENT_MODELS, NAMESPACES
+from ...resources.fedora3 import FedoraObject, ISLANDORA_CONTENT_MODELS
+from ...resources.fedora3 import NAMESPACES
 for code, namespace in NAMESPACES.items():
     etree.register_namespace(code, namespace)
 
@@ -22,7 +24,7 @@ FOXML_TEMPLATE = Template("""<foxml:digitalObject VERSION="1.1" PID="{{ pid }}"
  http://www.fedora.info/definitions/1/0/foxml1-1.xsd">
  {% if objectProperties %}{{ objectProperties }}{% endif %}
  {% for datastream in datastreams %}
- {{ datastream }}
+ {{ datastream.decode() }}
  {% endfor %}
  <foxml:datastream ID="RELS-EXT" STATE="A" CONTROL_GROUP="X" VERSIONABLE="true">
     <foxml:datastreamVersion ID="RELS-EXT.0" LABEL="RDF Statements about this Object" MIMETYPE="application/rdf+xml">
@@ -63,9 +65,11 @@ class FoxmlContentHandler(object):
             "MARC",
             "DISS_XML"]
 
-    def __init__(self, source_filepath=None):
+    def __init__(self, config, source_filepath=None):
         self.foxml_filepath = source_filepath
         self.info = {}
+        self.foxml = None
+        self.config = config
 
     def _exclude(self, fedora_object):
         for tail in FoxmlContentHandler.EXCLUDED_TAILS:
@@ -100,30 +104,18 @@ class FoxmlContentHandler(object):
                 self.info["master-object"] = datastream
 
     def on_post(self, req, resp):
-        print("Before getting fields")
-        fields = urllib.parse.parse_qs(req.stream.read().decode('utf-8'))
-        self.foxml_filepath = fields.get('filepath')[0] or self.foxml_filepath
-        print("File path is {}".format(self.foxml_filepath))
+        fields = json.loads(req.stream.read().decode('utf-8'))
+        self.foxml_filepath = fields.get('filepath') or self.foxml_filepath
         self.parse()
-        migrated_foxml = FOXML_TEMPLATE.render(
-            pid=self.info.get('pid'),
-            objectProperties=self._to_xml("obj_properties"),
-            marcDatastream=self._to_xml('marc'),
-            auditDatastream=self._to_xml('audit'),
-            policyDatastream=self._to_xml('policy'),
-            modsDatastream=self._to_xml('mods'),
-            dcDatastream=self._to_xml('dc'),
-            collectionPid=self.info.get('collection'),
-            contentModel=self.info.get('content_model')
-        )
-        print(migrated_foxml)
-        resp.body = migrated_foxml
+        migrated_object = FedoraObject(self.config)
+        resp.body = migrated_object.on_post(req, resp, self.info.get('pid'))
         resp.status = falcon.HTTP_201
 
     def parse(self):
-        if self.foxml_filepath is None:
+        if self.foxml_filepath is None or not os.path.exists(self.foxml_filepath):
             raise falcon.HTTPNotFound()
         context = etree.iterparse(open(self.foxml_filepath), events=('end',))
+
         collection = None
         for action, elem in context:
             tag = str(elem.tag)
@@ -159,8 +151,17 @@ class FoxmlContentHandler(object):
                         self.info['object-ids'] = [fedora_object, ]
             elif tag.endswith("objectProperties"):
                 self.info["obj_properties"] = elem
-        print("Fedora info {}".format(
-            self.info))
+        datastreams = []
+        for label in ['marc', 'audit', 'policy', 'mods', 'dc', 'master-object']:
+            if label in self.info:
+                datastreams.append(self._to_xml(label))
+        self.foxml = FOXML_TEMPLATE.render(
+            pid=self.info.get('pid'),
+            datastreams=datastreams,
+            objectProperties=self.info.get('obj_properties', None),
+            collectionPid=self.info.get('collection'),
+            contentModel=self.info.get('content_model')
+        )
 
 
 
