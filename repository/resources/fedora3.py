@@ -40,6 +40,7 @@ class FedoraObject(Repository):
         resp.status = falcon.HTTP_200
 
     def on_post(self, req, resp, pid=None):
+        mods = req.get_param('mods')
         name = req.get_param('name')
         if pid is None:
             ingest_url ="{}/new".format(self.base_url)
@@ -47,6 +48,7 @@ class FedoraObject(Repository):
             ingest_url = "{}/{}".format(
                 self.base_url,
                 pid)
+
         resp.body = "name is {}".format(req.stream.read(4096))
         resp.status = falcon.HTTP_200
 
