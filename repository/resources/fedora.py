@@ -56,13 +56,51 @@ class Resource(Repository):
         req.context['rdf'] = rdflib.Graph().parse(fedora_url)
 
     def on_patch(self, req, resp, id, sparql):
-        pass
+        fedora_url = self.search.url_from_id(id)
 
-    def on_post(self, req, resp, id=None):
-        if not id:
-            # Create a new Resource based on request
-            pass
-        pass
+        fedora_url_request = urllib.request.Request(
+            fedora_url,
+            data=sparql.encode(),
+            method='PATCH',
+            headers={'Content-Type': 'application/sparql-update'}
+        )
+
+        if self.opener:
+            result = self.opener(fedora_url_request)
+        else:
+            result = urllib.request.urlopen(fedora_url_request)
+        resp.status = falcon.HTTP_200
+        resp.body = json.dumps({"message": "{} updated".format(id)})
+
+    def on_post(self, req, resp):
+        binary = req.get_param('binary', None)
+        resource_id = req.get_param('id', None)
+        # Create a new Resource based on request
+        if resource_id:
+            self.post_url = urllib.path.join(self.rest_url, resource_id)
+        else:
+            self.post_url = self.rest_url
+        if binary:
+            fedora_add_request = urllib.request.Request(
+                self.rest_url,
+                method="POST",
+                data=binary)
+        else:
+            fedora_add_request = urllib.request.Request(
+                self.rest_url,
+                method="POST")
+        if self.opener:
+            result = self.opener(fedora_url_request)
+        else:
+            result = urllib.request.urlopen(fedora_url_request)
+        resource_url = result.read().decode()
+        resp.status = falcon.HTTP_201
+        resp.body = json.dumps({
+            "message": "Fedora Resource Created at {}".format(resource_url),
+            "url": resource_url
+            })
+
+
 
     def on_put(self, req, resp, id):
         """PUT method takes an id, a list of predicate and object tuples and

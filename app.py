@@ -35,6 +35,7 @@ api = application = falcon.API()
 api.add_route("/info", Info(config))
 api.add_route("/search",
     Search(config))
+api.add_route("/Resource/", Resource(config))
 api.add_route("/Resource/{id}", Resource(config))
 api.add_route("/Transaction", Transaction(config))
 

@@ -50,7 +50,7 @@ class FedoraObject(Repository):
                 pid)
 
         resp.body = "name is {}".format(req.stream.read(4096))
-        resp.status = falcon.HTTP_200
+        resp.status = falcon.HTTP_201
 
     def migrate_to(self, target_repository):
         """Method migrates Object to a target repository
