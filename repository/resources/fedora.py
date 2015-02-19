@@ -1,6 +1,8 @@
 __author__ = "Jeremy Nelson"
 import falcon
 import json
+import urllib.request
+import urllib.parse
 from .. import Repository
 
 def serialize(req, resp, resource):
@@ -77,7 +79,7 @@ class Resource(Repository):
         resource_id = req.get_param('id', None)
         # Create a new Resource based on request
         if resource_id:
-            self.post_url = urllib.path.join(self.rest_url, resource_id)
+            self.post_url = "/".join([self.rest_url, resource_id])
         else:
             self.post_url = self.rest_url
         if binary:
