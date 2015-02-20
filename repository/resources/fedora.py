@@ -18,7 +18,7 @@ class Resource(Repository):
 
     def __init__(self, config):
         super(Resource, self).__init__(config)
-        self.rest_url = "{}:{}/rest".format(
+        self.rest_url = "http://{}:{}/rest".format(
             config['FEDORA']['host'],
             config['FEDORA']['port'])
 
@@ -79,22 +79,25 @@ class Resource(Repository):
         resource_id = req.get_param('id', None)
         # Create a new Resource based on request
         if resource_id:
-            self.post_url = "/".join([self.rest_url, resource_id])
+            post_url = "/".join([self.rest_url, resource_id])
         else:
-            self.post_url = self.rest_url
+            post_url = self.rest_url
         if binary:
             fedora_add_request = urllib.request.Request(
-                self.rest_url,
+                post_url,
                 method="POST",
                 data=binary)
         else:
             fedora_add_request = urllib.request.Request(
-                self.rest_url,
+                post_url,
                 method="POST")
+
         if self.opener:
-            result = self.opener(fedora_url_request)
+            result = self.opener(fedora_add_request)
         else:
-            result = urllib.request.urlopen(fedora_url_request)
+            print("Trying to open {} {} {}".format(self.rest_url, post_url, binary))
+            result = urllib.request.urlopen(fedora_add_request)
+
         resource_url = result.read().decode()
         resp.status = falcon.HTTP_201
         resp.body = json.dumps({
