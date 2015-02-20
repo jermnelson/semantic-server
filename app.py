@@ -17,12 +17,15 @@ try:
     from .repository import Info, Search
     from .repository.resources.fedora import Resource, Transaction
     from .repository.resources.fedora3 import FedoraObject
+    from .repository.utilities.fuseki import Fuseki
     from .repository.utilities.migrating.foxml import FoxmlContentHandler
 except SystemError:
     from repository import Info, Search
     from repository.resources.fedora import Resource, Transaction
     from repository.resources.fedora3 import FedoraObject
+    from repository.utilities.fuseki import Fuseki
     from repository.utilities.migrating.foxml import FoxmlContentHandler
+
 
 
 def set_version():

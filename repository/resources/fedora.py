@@ -8,6 +8,7 @@ from .. import Repository
 def serialize(req, resp, resource):
     resp.body = json.dumps(req.context['rdf'])
 
+
 class Resource(Repository):
     """Fedora Resource wrapper, see
     https://wiki.duraspace.org/display/FEDORA40/Glossary#Glossary-Resource
@@ -19,8 +20,8 @@ class Resource(Repository):
     def __init__(self, config):
         super(Resource, self).__init__(config)
         self.rest_url = "http://{}:{}/rest".format(
-            config['FEDORA']['host'],
-            config['FEDORA']['port'])
+            self.fedora['host'],
+            self.fedora['port'])
 
 
     def on_delete(self, req, resp, id):
@@ -74,35 +75,55 @@ class Resource(Repository):
         resp.status = falcon.HTTP_200
         resp.body = json.dumps({"message": "{} updated".format(id)})
 
+    @falcon.after(ingest_resource)
     def on_post(self, req, resp):
-        binary = req.get_param('binary', None)
+        """POST Method response, accepts optional binary file and RDF as
+        request parameters in the POST
+
+        Args:
+            req -- Request
+            resp -- Response
+        """
+        binary = req.get_param('binary') or None
+        rdf = req.get_param('rdf') or None
         resource_id = req.get_param('id', None)
+        resource_uri = None
         # Create a new Resource based on request
         if resource_id:
             post_url = "/".join([self.rest_url, resource_id])
         else:
             post_url = self.rest_url
+        # First check and add binary datastream
         if binary:
             fedora_add_request = urllib.request.Request(
                 post_url,
                 method="POST",
                 data=binary)
-        else:
+            resource_uri = self.___open_request__(fedora_add_request)
+            post_url =  "/".join([resource_uri, "fcr:metadata"])
+        # Next handle any attached RDF
+        if rdf:
+            rdf_type = req.get_param('rdf-type') or "text/turtle"
+            fedora_add_request = urllib.request.Request(
+                post_url,
+                data=rdf.encode(),
+                method="POST",
+                headers={"Content-type": rdf_type})
+            rdf_url = self.__open_request__(fedora_add_request)
+            # Binary URL is the resource_uri and not the fcr:metadata url
+            if not resource_uri:
+                resource_uri = rdf_url
+        # Finally, if neither binary or RDF, create a stub Fedora Resource
+        if not resource_uri:
             fedora_add_request = urllib.request.Request(
                 post_url,
                 method="POST")
-
-        if self.opener:
-            result = self.opener(fedora_add_request)
-        else:
-            print("Trying to open {} {} {}".format(self.rest_url, post_url, binary))
-            result = urllib.request.urlopen(fedora_add_request)
-
-        resource_url = result.read().decode()
+            resource_uri = self.__open_request__(fedora_add_request)
         resp.status = falcon.HTTP_201
         resp.body = json.dumps({
-            "message": "Fedora Resource Created at {}".format(resource_url),
-            "url": resource_url
+            "message": "Created Fedora Resource id={}".format(
+                resource_uri.split("/")[-1]),
+            "uri": resource_uri
             })
 
 
