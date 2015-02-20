@@ -7,7 +7,11 @@ import urllib.request
 
 class Fuseki(object):
 
-    def __init__(self, url="http://localhost:3030", datastore='ds'):
+    def __init__(self, config):
+        url = "http://{}:{}".format(
+                config["FUSEKI"]["host"],
+                config["FUSEKI"]["port"])
+        datastore = config["FUSEKI"]["datastore"]
         self.update_url = "/".join([url, datastore, "update"])
         self.query_url = "/".join([url, datastore, "query"])
 

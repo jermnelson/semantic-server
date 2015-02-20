@@ -3,7 +3,7 @@ import falcon
 import json
 import urllib.request
 import urllib.parse
-from .. import Repository
+from .. import Repository, ingest_resource
 
 def serialize(req, resp, resource):
     resp.body = json.dumps(req.context['rdf'])

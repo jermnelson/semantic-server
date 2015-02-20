@@ -19,14 +19,14 @@ try:
     from .repository.resources.fedora3 import FedoraObject
     from .repository.utilities.fuseki import Fuseki
     from .repository.utilities.migrating.foxml import FoxmlContentHandler
-except SystemError:
+except (SystemError, ImportError):
     from repository import Info, Search
     from repository.resources.fedora import Resource, Transaction
     from repository.resources.fedora3 import FedoraObject
     from repository.utilities.fuseki import Fuseki
     from repository.utilities.migrating.foxml import FoxmlContentHandler
 
-
+api = None
 
 def set_version():
     version_path = os.path.join(os.path.dirname(__file__), "VERSION")
@@ -77,7 +77,5 @@ def main():
         application,
         use_reloader=True)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

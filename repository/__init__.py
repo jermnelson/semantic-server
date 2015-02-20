@@ -12,7 +12,6 @@ import urllib.request
 
 from elasticsearch import Elasticsearch
 from .utilities.fuseki import Fuseki
-from .. app import config
 
 AUTHZ = rdflib.Namespace("http://fedora.info/definitions/v4/authorization#")
 BF = rdflib.Namespace("http://bibframe.org/vocab/")
@@ -110,18 +109,20 @@ def create_sparql_insert_row(predicate, object_):
     statement += ".\n"
     return statement
 
-def ingest_resource(req, resp, params):
+
+def ingest_resource(req, resp, resource):
     """Decorator function for ingesting a Resource into Elastic Search
     and Fuseki
 
     Arguements:
         req -- Request
         resp -- Response
-        params -- Parameters
+        resource -- Parameters
     """
     search_index = Elasticsearch(
-            [{"host": config["ELASTICSEARCH"]["host"],
-              "port": config["ELASTICSEARCH"]["port"]}])
+            [{"host": self.config["ELASTICSEARCH"]["host"],
+              "port": self.config["ELASTICSEARCH"]["port"]}])
+    config = params['config']
     body = json.loads(resp.body)
     fcrepo_uri = rdflib.URIRef(body['uri'])
     graph = rdflib.Graph().parse(body['uri'])
@@ -131,8 +132,7 @@ def ingest_resource(req, resp, params):
     fuseki_sparql = "INSERT DATA {"
     fuseki_sparql += graph.serialize(format='nt')
     fuseki_sparql += "}"
-    Fuseki(config).__load__(fuseki_sparql)
-
+    Fuseki(resource.config).__load__(fuseki_sparql)
 
 
 
@@ -226,9 +226,7 @@ class Search(object):
         self.search_index = Elasticsearch(
             [{"host": config["ELASTICSEARCH"]["host"],
               "port": config["ELASTICSEARCH"]["port"]}])
-        self.triplestore = Fuseki(url="{}:{}".format(
-            config["FUSEKI"]["host"],
-            config["FUSEKI"]["port"]))
+        self.triplestore = Fuseki(config)
 
     def on_get(self, req, resp):
         """Method takes a a phrase, returns the expanded result.
@@ -257,6 +255,7 @@ class Search(object):
 class Repository(object):
     """Base repository object"""
 
+
     def __init__(self, config):
         """Initializes a Repository object.
 
@@ -282,6 +281,9 @@ class Repository(object):
                 admin_pwd)
             handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
             self.opener = urllib.request.build_opener(handler)
+
+
+
 
     def __open_request__(self, fedora_request):
         """Internal method takes a urllib.request.Request and attempts to open
