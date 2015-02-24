@@ -17,12 +17,18 @@ try:
     from .repository import Info, Search
     from .repository.resources.fedora import Resource, Transaction
     from .repository.resources.fedora3 import FedoraObject
+    from .repository.resources.islandora import IslandoraDatastream
+    from .repository.resources.islandora import IslandoraObject
+    from .repository.resources.islandora import IslandoraRelationship
     from .repository.utilities.fuseki import Fuseki
     from .repository.utilities.migrating.foxml import FoxmlContentHandler
 except (SystemError, ImportError):
     from repository import Info, Search
     from repository.resources.fedora import Resource, Transaction
     from repository.resources.fedora3 import FedoraObject
+    from repository.resources.islandora import IslandoraDatastream
+    from repository.resources.islandora import IslandoraObject
+    from repository.resources.islandora import IslandoraRelationship
     from repository.utilities.fuseki import Fuseki
     from repository.utilities.migrating.foxml import FoxmlContentHandler
 
@@ -69,6 +75,15 @@ api.add_route("/Transaction", Transaction(config))
 if 'FEDORA3' in config:
     api.add_route("/migrate/foxml", FoxmlContentHandler(config))
     api.add_route("/Object/{pid}", FedoraObject(config))
+
+if 'ISLANDORA' in config:
+    api.add_route("/islandora/{pid}", IslandoraObject(config, pid))
+    api.add_route(
+        "/islandora/{pid}/datastream",
+        IslandoraDatastream(config, pid))
+    api.add_route(
+        "/islandora/{pid}/relationship",
+        IslandoraRelationship(config, pid))
 
 def main():
     run_simple(

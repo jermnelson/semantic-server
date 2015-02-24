@@ -8,7 +8,7 @@ import requests
 ##import urllib.request
 ##from base64 import encodestring
 
-class IslandoraObject(object):
+class IslandoraBase(object):
 
     def __init__(self, config):
         if not 'ISLANDORA' in config:
@@ -26,21 +26,56 @@ class IslandoraObject(object):
         if "username" in self.islandora and "password" in self.islandora:
             self.auth = (self.islandora["username"], self.islandora["password"])
 
-##        if "username" in self.islandora and "password" in self.islandora:
-##            encoded_usr_pwd = encodestring(
-##                "{}:{}".format(
-##                    self.islandora["username"],
-##                    self.islandora["password"]).encode())[:-1]
-##            self.auth = "Basic {}".format(encoded_usr_pwd)
+class IslandoraDatastream(IslandoraBase):
+
+    def __init__(self, config, pid=None):
+        super(IslandoraDatastream, self).__init__(config)
+        if pid:
+            self.rest_url = "{}/rest/v1/object/{}/datastreams".format(
+                self.base_url,
+                pid)
+        else:
+            self.rest_url = "{}/rest/v1/object/".format(self.base_url)
+
+    def __add__(self, data, stream, pid=None):
+        if not self.rest_url.endswith("datastreams"):
+            if not pid:
+                raise falcon.HTTPMissingParam(
+                    "Cannot add a datastream - missing pid",
+                    "pid")
+            self.rest_url += "{}/datastreams".format(pid)
+        add_ds_req = requests.post(
+                self.rest_url,
+                data=data,
+                files=files, auth=self.auth)
+        if add_ds_req.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Failed to add datastream to Islandora",
+                "Islandora Status Code {}".format(add_ds_req.status_code))
+        return True
+
+    def on_post(self, req, resp, stream=None):
+
+
+
+class IslandoraObject(IslandoraBase):
+
+    def __init__(self, config):
+        super(IslandoraObject, self).__init__(config)
+
+
+
+    def __add_datastream__(self, pid, data, stream, label='Primary File'):
+
+        if add_ds_req.status_code > 399:
+            raise falcon.HTTP
+
+
+
+
 
     def __add_relationship__(self, uri, predicate, object_):
-        return {
-            "predicate": predicate,
-            "object": object_,
-            "uri": uri,
-            "literal": "false",
-            "type": "nil"
-        }
+        return
 
 
     def on_post(self, req, resp, pid=None):
@@ -60,37 +95,104 @@ class IslandoraObject(object):
         add_object_req = requests.post(url, data=data, auth=self.auth)
         if not pid:
             pid = add_object_req.json()['pid']
-        # Add Content Model
-        add_content_type = requests.post(
-            "{}/{}/relationship".format(self.base_url, pid),
-            data=self.__add_relationship__(
-                "info:fedora/fedora-system:def/model#",
-                "hasModel",
-                content_model),
-            auth=self.auth)
+        islandora_relationship = IslandoraRelationship(config, pid)
+        # Add Content Model relationship
+        islandora_relationship.__add__(
+            "info:fedora/fedora-system:def/model#",
+            "hasModel",
+            content_model)
         # Add to Parent Collection
-        add_parent_collection = requests.post(
-            "{}/{}/relationship".format(self.base_url, pid),
-            data=self.__add_relationship__(
+        islandora_relationship.__add__(
                 "info:fedora/fedora-system:def/relations-external#",
                 "isMemberOfCollection",
-                parent_pid),
-            auth=self.auth)
+                parent_pid)
+        islandora_datastream = IslandoraDatastream(config, pid)
         # Add MODS metadata if present
         if mods:
-            url = "{}/{}/datastreams".format(url, pid)
-            data = {"dsid": "MODS", "label": "MODS"}
-            files = {"file": mods}
-            add_mods_req = requests.post(
-                url,
-                data=data,
-                files=files, auth=self.auth)
+            islandora_datastream.__add__(
+                {"dsid": "MODS", "label": "MODS"},
+                {"file": mods})
         # Adds Primary File
         if primary_file:
-            url = "{}/{}/datastreams".format(url, pid)
+            data = {
+                'dsid': req.get_param("file_disd") or "PRIMARY_DATASTREAM",
+                'label': req.get_param("file_label") or\
+             "Primary datastream for Object {}".format(pid)}
+            islandora_datastream.__add__(data, {"file": primary_file})
+        return json.dumps({"message": "Successfully added {}".format(pid)})
 
 
 
+class IslandoraRelationship(IslandoraBase):
+
+    def __init__(self, config, pid=None):
+        super(IslandoraRelationship, self).__init__(config)
+        self.pid = pid
+        if self.pid:
+            self.rest_url = "{}/rest/v1/object/{}/relationship".format(
+                self.base_url,
+                self.pid)
+        else:
+            self.rest_url = "{}/rest/v1/object/".format(self.base_url)
+
+
+
+    def __add__(self, namespace, predicate, object_, pid=None):
+        self.__set_rest_url__(pid)
+        data = {
+            "predicate": predicate,
+            "object": object_,
+            "uri": namespace,
+            "literal": "false",
+            "type": "nil"}
+        add_relationship_req = requests.post(
+            self.rest_url,
+            data,
+            auth=self.auth)
+        if add_relationship_req.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Failed to add relationship",
+                "Failed to add relationship with url {}".format(self.rest_url))
+        return True
+
+    def __set_rest_url__(self, pid=None):
+        if not self.pid and not pid:
+            raise falcon.HTTPMissingParam(
+                "Cannot add relationship - missing pid",
+                "pid")
+        elif not pid:
+            pid = self.pid
+        if not self.rest_url.endswith("relationship"):
+            self.rest_url +="{}/{}/relationship".format(self.rest_url, pid)
+
+    def on_get(self, req, resp, pid=None):
+        self.__set_rest_url__(pid)
+
+
+
+    def on_post(self, req, resp, pid=None):
+        self.__set_rest_url__(pid)
+        namespace = req.get_param("namespace") or\
+            "info:fedora/fedora-system:def/relations-external#"
+        predicate = req.get_param("predicate") or None
+        if not predicate:
+            raise falcon.HTTPMissingParam(
+                "Islandora Relationship POST missing predicate param",
+                "predicate")
+        object_ = req.get_param("object") or None
+        if not object_:
+            raise falcon.HTTPMissingParam(
+                "Islandora POST missing object param")
+        if self.__add__(namespace, predicate, object_):
+            message = """Added relationship {} from {} to {}""".format(
+                predicate,
+                pid,
+                object_)
+            return json.dumps(
+                {"message": message})
+        else:
+            return json.dumps(
+                {"message": "failed to add relationship to {}".format(pid)})
 
 
 
