@@ -66,24 +66,31 @@ load_config(config)
 api = application = falcon.API()
 
 api.add_route("/info", Info(config))
-api.add_route("/search",
-    Search(config))
-api.add_route("/Resource/", Resource(config))
-api.add_route("/Resource/{id}", Resource(config))
-api.add_route("/Transaction", Transaction(config))
+api.add_route("/search", Search(config))
+if 'FEDORA' in config:
+    resource = Resource(config)
+    api.add_route("/Resource/", resource)
+    api.add_route("/Resource/{id}", resource)
+    api.add_route("/Transaction", Transaction(config))
 
 if 'FEDORA3' in config:
     api.add_route("/migrate/foxml", FoxmlContentHandler(config))
     api.add_route("/Object/{pid}", FedoraObject(config))
 
 if 'ISLANDORA' in config:
-    api.add_route("/islandora/{pid}", IslandoraObject(config, pid))
+    islandora_object = IslandoraObject(config)
+    islandora_datastream = IslandoraDatastream(config)
+    api.add_route("/islandora/", islandora_object)
+    api.add_route("/islandora/{pid}", islandora_object)
     api.add_route(
-        "/islandora/{pid}/datastream",
-        IslandoraDatastream(config, pid))
+        "/islandora/{pid}/datastream/",
+        islandora_datastream)
+    api.add_route(
+        "/islandora/{pid}/datastream/{dsid}",
+        islandora_datastream)
     api.add_route(
         "/islandora/{pid}/relationship",
-        IslandoraRelationship(config, pid))
+        IslandoraRelationship(config))
 
 def main():
     run_simple(
