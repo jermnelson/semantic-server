@@ -94,8 +94,8 @@ if 'ISLANDORA' in config:
 
 def main():
     run_simple(
-        config.get('DEFAULT', 'host'),
-        config.getint('DEFAULT', 'port'),
+        config.get('REST_API', 'host'),
+        config.getint('REST_API', 'port'),
         application,
         use_reloader=True)
 

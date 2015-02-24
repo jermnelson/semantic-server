@@ -27,12 +27,12 @@ class IslandoraBase(object):
             "ISLANDORA config missing",
             "ISLANDORA section in config.py is missing")
         self.islandora = config['ISLANDORA']
-        if not "port" in self.islandora:
-            self.base_url = "http://{}".format(self.islandora["host"])
-        else:
+        if "port" in self.islandora:
             self.base_url = "http://{}:{}".format(
                 self.islandora["host"],
                 self.islandora["port"])
+        else:
+            self.base_url = "http://{}".format(self.islandora["host"])
         self.rest_url = "{}/islandora/rest/v1/object".format(self.base_url)
         self.auth = None
         if "username" in self.islandora and "password" in self.islandora:
@@ -65,7 +65,6 @@ class IslandoraDatastream(IslandoraBase):
         else:
             self.pid = None
             self.rest_url = "{}/islandora/rest/v1/object/".format(self.base_url)
-
 
 
     def __add__(self, data, stream, pid=None):
@@ -164,6 +163,13 @@ class IslandoraObject(IslandoraBase):
             namespace = self.islandora.get('namespace', "islandora")
         data["namespace"] = namespace
         add_object_req = requests.post(self.rest_url, data=data, auth=self.auth)
+        if add_object_req.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Failed to add Islandora object",
+                "Failed with url={}, islandora status code={}\n{}".format(
+                    self.rest_url,
+                    add_object_req.status_code,
+                    add_object_req.json().get('message')))
         if not pid:
             pid = add_object_req.json()['pid']
             data['pid'] = pid
