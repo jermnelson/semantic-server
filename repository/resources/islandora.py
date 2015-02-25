@@ -84,16 +84,19 @@ class IslandoraDatastream(IslandoraBase):
         add_ds_req = requests.post(
                 self.rest_url,
                 data=data,
-                files=files,
+                files={'file': stream},
                 auth=self.auth)
         if add_ds_req.status_code > 399:
             raise falcon.HTTPInternalServerError(
                 "Failed to add datastream to Islandora",
-                "Islandora Status Code {}".format(add_ds_req.status_code))
+                """Islandora Status Code {}
+                Datastream id={} Object pid={}""".format(
+                    add_ds_req.status_code,
+                    data.get('disd', None),
+                    pid))
         return True
 
     def on_get(self, req, resp, pid=None, dsid=None):
-
         if dsid is None:
             raise falcon.HTTPMissingParam(
                 "Cannot retrieve datastream - missing dsid",
@@ -115,9 +118,25 @@ class IslandoraDatastream(IslandoraBase):
         resp.body = json.dumps(get_ds_req.json())
 
 
-    def on_post(self, req, resp, pid=None, dsid=None):
+    def on_post(self, req, resp, pid, dsid=None):
         self.__set_rest_url__("datastreams", pid)
-        data = req.get_param()
+        data = {"dsid": disd or "FILE_UPLOAD",
+                "state": req.get_param('state') or "A",
+                "controlGroup": req.get_param('control_group') or "M"}
+        stream = req.get_param('file')
+        data["mimeType"] = req.get_param('mime_type') or\
+         'application/octet-stream'
+        if self.__add__(data, stream, pid):
+            resp.status = falcon.HTTP_201
+            resp.body = json.dumps({
+                "message": "Added {} datastream to {}".format(dsid, pid)})
+        else:
+            desc = "{} datastream was not added object".format(dsid)
+            desc += "{}\nusing POST URL={}".format(pid, self.rest_url)
+            raise falcon.HTTPInternalServerError(
+                "Failed to add datastream to object",
+                desc)
+
 
 
 
@@ -151,7 +170,6 @@ class IslandoraObject(IslandoraBase):
             self.__set_rest_url__(None, pid)
         msg = {'datastreams':[]}
         data = {}
-        mods = req.get_param('mods')
         primary_file = req.get_param('file')
         content_model = req.get_param('content_model')
         label = req.get_param('label')
@@ -190,12 +208,6 @@ class IslandoraObject(IslandoraBase):
         islandora_datastream = IslandoraDatastream(
             {"ISLANDORA": self.islandora},
             pid)
-        # Add MODS metadata if present
-        if mods:
-            msg['datastreams'].append('MODS')
-            islandora_datastream.__add__(
-                {"dsid": "MODS", "label": "MODS"},
-                {"file": mods})
         # Adds Primary File
         if primary_file:
             data = {
@@ -204,9 +216,9 @@ class IslandoraObject(IslandoraBase):
              "Primary datastream for Object {}".format(pid)}
             islandora_datastream.__add__(data, {"file": primary_file})
             msg['datastreams'].append(data['dsid'])
+        msg['message'] = "Successfully ingest {} into Islandora".format(pid)
         resp.status = falcon.HTTP_201
-        resp.body = json.dumps({"message": msg})
-
+        resp.body = json.dumps(msg)
 
 
 class IslandoraRelationship(IslandoraBase):
@@ -268,8 +280,7 @@ class IslandoraRelationship(IslandoraBase):
                 pid,
                 object_)
             resp.status = falcon.HTTP_201
-            resp.body = json.dumps(
-                {"message": message})
+            resp.body = json.dumps({"message": message})
         else:
             raise
             resp.status = falcon.HTTP_400
