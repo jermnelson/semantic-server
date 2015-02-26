@@ -101,9 +101,7 @@ class IslandoraDatastream(IslandoraBase):
             raise falcon.HTTPMissingParam(
                 "Cannot retrieve datastream - missing dsid",
                 "dsid")
-        print("Rest url before {} {}".format(self.rest_url, pid))
         self.__set_rest_url__("datastreams", pid)
-        print("Rest url after {}".format(self.rest_url))
         get_url = self.rest_url
         if not get_url.endswith(dsid):
             get_url += "/{}".format(dsid)
@@ -120,6 +118,7 @@ class IslandoraDatastream(IslandoraBase):
 
     def on_post(self, req, resp, pid, dsid=None):
         self.__set_rest_url__("datastreams", pid)
+        print("Rest url {}".format(self.rest_url))
         data = {"dsid": disd or "FILE_UPLOAD",
                 "state": req.get_param('state') or "A",
                 "controlGroup": req.get_param('control_group') or "M"}
@@ -170,6 +169,7 @@ class IslandoraObject(IslandoraBase):
             self.__set_rest_url__(None, pid)
         msg = {'datastreams':[]}
         data = {}
+        print("Request stream {}".format(req.stream))
         primary_file = req.get_param('file')
         content_model = req.get_param('content_model')
         label = req.get_param('label')
@@ -182,6 +182,7 @@ class IslandoraObject(IslandoraBase):
         data["namespace"] = namespace
         add_object_req = requests.post(self.rest_url, data=data, auth=self.auth)
         if add_object_req.status_code > 399:
+            print(add_object_req.json())
             raise falcon.HTTPInternalServerError(
                 "Failed to add Islandora object",
                 "Failed with url={}, islandora status code={}\n{}".format(
@@ -195,6 +196,7 @@ class IslandoraObject(IslandoraBase):
         islandora_relationship = IslandoraRelationship(
             {"ISLANDORA": self.islandora},
             pid)
+        print("Before adding content_model={} pid={}".format(content_model, pid))
         # Add Content Model relationship
         islandora_relationship.__add__(
             "info:fedora/fedora-system:def/model#",
