@@ -16,6 +16,7 @@ Secure Site - https://www.drupal.org/project/securesite
 __author__ = "Jeremy Nelson"
 
 import falcon
+import io
 import json
 import requests
 
@@ -45,8 +46,11 @@ class IslandoraBase(object):
                 "pid")
         if not pid:
             pid = self.pid
+        if self.rest_url.endswith("/"):
+            self.rest_url = self.rest_url[:-1]
         if label:
             if not self.rest_url.endswith(label):
+
                 self.rest_url ="{}/{}/{}".format(self.rest_url, pid, label)
         else:
             self.rest_url = "{}/{}".format(self.rest_url, pid)
@@ -67,7 +71,7 @@ class IslandoraDatastream(IslandoraBase):
             self.rest_url = "{}/islandora/rest/v1/object/".format(self.base_url)
 
 
-    def __add__(self, data, stream, pid=None):
+    def __add__(self, data, stream, pid, dsid):
         """Internal method takes data dictionary and a bitstream along with
         a pid and adds the datastream to the Islandora Object at the given
         pid.
@@ -76,16 +80,33 @@ class IslandoraDatastream(IslandoraBase):
             data -- Dictionary of properties about the datastream
             stream -- bitstream
             pid -- PID to add, can be none to default to instance PID
+            dsid -- Datastream ID, if None will raise Error
 
         Returns
             boolean or raise falcon.HTTPMissingParameter
         """
-        self.__set_rest_url__("datastreams", pid)
+        self.__set_rest_url__("datastream", pid)
+        if not dsid:
+            raise falcon.HTTPMissingParam(
+                "dsid")
+##        rest_url = "{}/{}".format(self.rest_url, dsid)
+        if not 'namespace' in data:
+            data['namespace'] = self.islandora.get('namespace', "islandora")
+        if not hasattr(stream, 'read'):
+            # Create a Bytes io for stream
+            bytes_io = io.BytesIO()
+            if type(stream) == bytes:
+                bytes_io.write(stream)
+            elif type(stream) == str:
+                bytes_io.write(stream.encode())
+            stream = bytes_io
         add_ds_req = requests.post(
                 self.rest_url,
                 data=data,
                 files={'file': stream},
                 auth=self.auth)
+        print("After ds={} submitted, code={} output={}".format(
+            self.rest_url, add_ds_req.status_code, add_ds_req.json()))
         if add_ds_req.status_code > 399:
             raise falcon.HTTPInternalServerError(
                 "Failed to add datastream to Islandora",
@@ -117,15 +138,13 @@ class IslandoraDatastream(IslandoraBase):
 
 
     def on_post(self, req, resp, pid, dsid=None):
-        self.__set_rest_url__("datastreams", pid)
-        print("Rest url {}".format(self.rest_url))
-        data = {"dsid": disd or "FILE_UPLOAD",
+        data = {"dsid": dsid or "FILE_UPLOAD",
                 "state": req.get_param('state') or "A",
                 "controlGroup": req.get_param('control_group') or "M"}
         stream = req.get_param('file')
         data["mimeType"] = req.get_param('mime_type') or\
          'application/octet-stream'
-        if self.__add__(data, stream, pid):
+        if self.__add__(data, stream, pid, dsid):
             resp.status = falcon.HTTP_201
             resp.body = json.dumps({
                 "message": "Added {} datastream to {}".format(dsid, pid)})
@@ -153,7 +172,6 @@ class IslandoraObject(IslandoraBase):
 
     def on_get(self, req, resp, pid=None):
         self.__set_rest_url__(None, pid)
-        print("Before setting geting status {}".format(self.rest_url))
         get_obj_req = requests.get(self.rest_url)
         if get_obj_req.status_code > 399:
             raise falcon.HTTPInternalServerError(
@@ -169,8 +187,7 @@ class IslandoraObject(IslandoraBase):
             self.__set_rest_url__(None, pid)
         msg = {'datastreams':[]}
         data = {}
-        print("Request stream {}".format(req.stream))
-        primary_file = req.get_param('file')
+        primary_file = req.get_param('file') or None
         content_model = req.get_param('content_model')
         label = req.get_param('label')
         if label:
@@ -180,9 +197,9 @@ class IslandoraObject(IslandoraBase):
         if not namespace:
             namespace = self.islandora.get('namespace', "islandora")
         data["namespace"] = namespace
+        print("Data is {}".format(data))
         add_object_req = requests.post(self.rest_url, data=data, auth=self.auth)
         if add_object_req.status_code > 399:
-            print(add_object_req.json())
             raise falcon.HTTPInternalServerError(
                 "Failed to add Islandora object",
                 "Failed with url={}, islandora status code={}\n{}".format(
@@ -196,8 +213,8 @@ class IslandoraObject(IslandoraBase):
         islandora_relationship = IslandoraRelationship(
             {"ISLANDORA": self.islandora},
             pid)
-        print("Before adding content_model={} pid={}".format(content_model, pid))
         # Add Content Model relationship
+
         islandora_relationship.__add__(
             "info:fedora/fedora-system:def/model#",
             "hasModel",
@@ -244,6 +261,7 @@ class IslandoraRelationship(IslandoraBase):
             "uri": namespace,
             "literal": "false",
             "type": "nil"}
+        print("REST URL={}, data={}".format(self.rest_url, data))
         add_relationship_req = requests.post(
             self.rest_url,
             data,
