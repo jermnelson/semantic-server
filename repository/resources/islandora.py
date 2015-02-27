@@ -15,6 +15,7 @@ Secure Site - https://www.drupal.org/project/securesite
 """
 __author__ = "Jeremy Nelson"
 
+import cgi
 import falcon
 import io
 import json
@@ -79,34 +80,25 @@ class IslandoraDatastream(IslandoraBase):
         Args:
             data -- Dictionary of properties about the datastream
             stream -- bitstream
-            pid -- PID to add, can be none to default to instance PID
+            pid -- PID to add
             dsid -- Datastream ID, if None will raise Error
 
         Returns
             boolean or raise falcon.HTTPMissingParameter
         """
-        self.__set_rest_url__("datastream", pid)
         if not dsid:
             raise falcon.HTTPMissingParam(
                 "dsid")
-##        rest_url = "{}/{}".format(self.rest_url, dsid)
+        rest_url = "{}/islandora/rest/v1/object/{}/datastream".format(
+            self.base_url,
+            pid)
         if not 'namespace' in data:
             data['namespace'] = self.islandora.get('namespace', "islandora")
-        if not hasattr(stream, 'read'):
-            # Create a Bytes io for stream
-            bytes_io = io.BytesIO()
-            if type(stream) == bytes:
-                bytes_io.write(stream)
-            elif type(stream) == str:
-                bytes_io.write(stream.encode())
-            stream = bytes_io
         add_ds_req = requests.post(
-                self.rest_url,
+                rest_url,
                 data=data,
-                files={'file': stream},
+                files={"file": stream},
                 auth=self.auth)
-        print("After ds={} submitted, code={} output={}".format(
-            self.rest_url, add_ds_req.status_code, add_ds_req.json()))
         if add_ds_req.status_code > 399:
             raise falcon.HTTPInternalServerError(
                 "Failed to add datastream to Islandora",
@@ -117,16 +109,16 @@ class IslandoraDatastream(IslandoraBase):
                     pid))
         return True
 
-    def on_get(self, req, resp, pid=None, dsid=None):
+    def on_get(self, req, resp, pid, dsid=None):
         if dsid is None:
             raise falcon.HTTPMissingParam(
                 "Cannot retrieve datastream - missing dsid",
                 "dsid")
-        self.__set_rest_url__("datastreams", pid)
-        get_url = self.rest_url
-        if not get_url.endswith(dsid):
-            get_url += "/{}".format(dsid)
-        get_ds_req = requests.get(get_url)
+        rest_url =  "{}/islandora/rest/v1/object/{}/datastreams".format(
+            self.base_url,
+            pid,
+            dsid)
+        get_ds_req = requests.get(rest_url)
         if get_ds_req.status_code > 399:
             raise falcon.HTTPInternalServerError(
                 "Failed to get datastream from Islandora",
@@ -136,15 +128,29 @@ class IslandoraDatastream(IslandoraBase):
         resp.status = falcon.HTTP_200
         resp.body = json.dumps(get_ds_req.json())
 
-
     def on_post(self, req, resp, pid, dsid=None):
-        data = {"dsid": dsid or "FILE_UPLOAD",
-                "state": req.get_param('state') or "A",
-                "controlGroup": req.get_param('control_group') or "M"}
-        stream = req.get_param('file')
-        data["mimeType"] = req.get_param('mime_type') or\
-         'application/octet-stream'
-        if self.__add__(data, stream, pid, dsid):
+        env = req.env
+        env.setdefault('QUERY_STRING', '')
+        form = cgi.FieldStorage(fp=req.stream, environ=env)
+        file_item = form['userfile']
+        data = {"dsid": dsid or "FILE_UPLOAD"}
+        if "state" in form:
+            data["state"] = form["state"].value
+        else:
+            data["state"] = "A"
+        if "control_group" in form:
+            data["controlGroup"] = form['control_group'].value
+        else:
+             data["controlGroup"] = "M"
+        if "label" in form:
+            data["label"] = form["label"].value
+        else:
+            data["label"] = file_item.name
+        if "mime_type" in form:
+            data["mimeType"] = form["mime_type"].value
+        else:
+            data["mimeType"] = 'application/octet-stream'
+        if self.__add__(data, file_item.file, pid, dsid):
             resp.status = falcon.HTTP_201
             resp.body = json.dumps({
                 "message": "Added {} datastream to {}".format(dsid, pid)})
@@ -197,7 +203,6 @@ class IslandoraObject(IslandoraBase):
         if not namespace:
             namespace = self.islandora.get('namespace', "islandora")
         data["namespace"] = namespace
-        print("Data is {}".format(data))
         add_object_req = requests.post(self.rest_url, data=data, auth=self.auth)
         if add_object_req.status_code > 399:
             raise falcon.HTTPInternalServerError(
@@ -214,7 +219,6 @@ class IslandoraObject(IslandoraBase):
             {"ISLANDORA": self.islandora},
             pid)
         # Add Content Model relationship
-
         islandora_relationship.__add__(
             "info:fedora/fedora-system:def/model#",
             "hasModel",
@@ -261,7 +265,6 @@ class IslandoraRelationship(IslandoraBase):
             "uri": namespace,
             "literal": "false",
             "type": "nil"}
-        print("REST URL={}, data={}".format(self.rest_url, data))
         add_relationship_req = requests.post(
             self.rest_url,
             data,
