@@ -176,6 +176,30 @@ class IslandoraObject(IslandoraBase):
         else:
             self.rest_url = "{}/islandora/rest/v1/object".format(self.base_url)
 
+    def __add_stub__(self, label, namespace, pid=None):
+        """Internal method takes label, namespace, and an optional pid
+        creates a new Islandora Object and returns JSON result
+
+        Args:
+            label -- Label for new Islandora Object
+            namespace -- Namespace for repository
+            pid -- Optional pid
+        """
+        data = {"label": label, "namespace": namespace} 
+        if pid:
+            data['pid'] = pid
+        add_url = "{}/islandora/rest/v1/object".format(self.base_url)
+        add_object_result = requests.post(add_url, data=data, auth=self.auth)
+        if add_object_result.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Failed to add Islandora object",
+                "Failed with url={}, islandora status code={}\n{}".format(
+                    add_url,
+                    add_object_result.status_code,
+                    add_object_result.text))
+        return add_object_result.json()
+        
+
     def on_get(self, req, resp, pid=None):
         self.__set_rest_url__(None, pid)
         get_obj_req = requests.get(self.rest_url)
@@ -192,27 +216,16 @@ class IslandoraObject(IslandoraBase):
         if pid:
             self.__set_rest_url__(None, pid)
         msg = {'datastreams':[]}
-        data = {}
         primary_file = req.get_param('file') or None
         content_model = req.get_param('content_model')
-        label = req.get_param('label')
-        if label:
-            data['label'] = label
+        label = req.get_param('label') or "LABEL for {}".format(pid)
+        namespace = req.get_param('namespace') or self.islandora.get(
+                                                      'namespace', 
+                                                      "islandora")
+        add_object_msg = self.__add_stub__(label, namespace, pid) 
         parent_pid = req.get_param('parent_pid') or 'islandora:root'
-        namespace = req.get_param('namespace')
-        if not namespace:
-            namespace = self.islandora.get('namespace', "islandora")
-        data["namespace"] = namespace
-        add_object_req = requests.post(self.rest_url, data=data, auth=self.auth)
-        if add_object_req.status_code > 399:
-            raise falcon.HTTPInternalServerError(
-                "Failed to add Islandora object",
-                "Failed with url={}, islandora status code={}\n{}".format(
-                    self.rest_url,
-                    add_object_req.status_code,
-                    add_object_req.json().get('message')))
         if not pid:
-            pid = add_object_req.json()['pid']
+            pid = add_object_msg['pid']
             data['pid'] = pid
         msg['pid'] = pid
         islandora_relationship = IslandoraRelationship(

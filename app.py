@@ -80,6 +80,7 @@ if 'FEDORA3' in config:
 if 'ISLANDORA' in config:
     islandora_object = IslandoraObject(config)
     islandora_datastream = IslandoraDatastream(config)
+    islandora_relationship = IslandoraRelationship(config)
     api.add_route("/islandora/", islandora_object)
     api.add_route("/islandora/{pid}", islandora_object)
     api.add_route(
@@ -90,7 +91,7 @@ if 'ISLANDORA' in config:
         islandora_datastream)
     api.add_route(
         "/islandora/{pid}/relationship",
-        IslandoraRelationship(config))
+        islandora_relationship)
 
 def main():
     run_simple(

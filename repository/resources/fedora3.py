@@ -13,6 +13,7 @@ ISLANDORA_CONTENT_MODELS = {
 NAMESPACES ={
     "audit":"info:fedora/fedora-system:def/audit#",
     "dc":"http://purl.org/dc/elements/1.1/",
+    "fedora": "info:fedora/fedora-system:def/relations-external#",
     "foxml": "info:fedora/fedora-system:def/foxml#",
     "mods": "http://www.loc.gov/mods/v3",
     "oai_dc":"http://www.openarchives.org/OAI/2.0/oai_dc/"
