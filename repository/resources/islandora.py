@@ -185,12 +185,15 @@ class IslandoraObject(IslandoraBase):
             namespace -- Namespace for repository
             pid -- Optional pid
         """
-        data = {"label": label, "namespace": namespace} 
+        data = {"label": label} 
         if pid:
             data['pid'] = pid
+        else:
+            data["namespace"] = namespace
         add_url = "{}/islandora/rest/v1/object".format(self.base_url)
         add_object_result = requests.post(add_url, data=data, auth=self.auth)
         if add_object_result.status_code > 399:
+            print("Failed to add {} data={} auth={}".format(add_url, data, self.auth))
             raise falcon.HTTPInternalServerError(
                 "Failed to add Islandora object",
                 "Failed with url={}, islandora status code={}\n{}".format(
