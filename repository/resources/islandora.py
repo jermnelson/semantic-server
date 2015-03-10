@@ -226,7 +226,7 @@ class IslandoraObject(IslandoraBase):
         parent_pid = req.get_param('parent_pid') or 'islandora:root'
         if not pid:
             pid = add_object_msg['pid']
-            data['pid'] = pid
+            #data['pid'] = pid
         msg['pid'] = pid
         islandora_relationship = IslandoraRelationship(
             {"ISLANDORA": self.islandora},
