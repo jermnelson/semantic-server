@@ -168,6 +168,42 @@ def dedup(term, elastic_search=Elasticsearch()):
         top_hit = search_result['hits']['hits'][0]
         return top_hit['_source']['fcrepo:hasLocation'][0]
 
+
+def subjects_list(graph):
+    """Method takes a BF graph, takes all subjects and creates subject 
+    graphs, converting BNodes into fake subject URI
+
+    Args:
+       graph(rdf.Graph): BIBFRAME RDF Graph
+    
+    Returns:
+       list: A list of all graphs for each subject in graph
+    """
+    def __get_add__(bnode):
+        if bnode in bnode_subs:
+            return bnode_subs[bnode]
+        subject = rdflib.URIRef("{}/{}".format(base_url, bnode))
+        bnode_subs[bnode] = subject
+        return subject
+    bnode_subs, subject_graphs = {}, []
+    base_url = 'http://{}'.format("example")
+    for s in set(graph.subjects()):
+        subject_graph = rdflib.Graph()
+        if type(s) == rdflib.BNode:
+            subject = __get_add__(s)
+        else:
+            subject = s
+        # Now add all subject's triples to subject graph
+        for p,o in graph.predicate_objects(s):
+            if type(o) == rdflib.BNode:
+                o = __get_add__(o)
+            subject_graph.add((subject, p, o))
+        subject_graphs.append(subject_graph)
+    return subject_graphs
+            
+               
+ 
+
 def default_graph():
     """Function generates a new rdflib Graph and sets all namespaces as part
     of the graph's context"""

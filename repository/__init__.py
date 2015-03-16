@@ -119,9 +119,12 @@ def ingest_resource(req, resp, resource):
         resp -- Response
         resource -- Parameters
     """
-    search_index = Elasticsearch(
+    if 'port' in self.config["ELASTICSEARCH"]:
+        search_index = Elasticsearch(
             [{"host": self.config["ELASTICSEARCH"]["host"],
               "port": self.config["ELASTICSEARCH"]["port"]}])
+    else:
+        search_index = Elasticsearch(self.config["ELASTICSEARCH"])
     config = params['config']
     body = json.loads(resp.body)
     fcrepo_uri = rdflib.URIRef(body['uri'])
