@@ -49,6 +49,7 @@ CONTEXT = {
     "fedorarelsext": str(FEDORARELSEXT),
     "foaf": str(FOAF),
     "image": str(IMAGE),
+    "indexing": "http://fedora.info/definitions/v4/indexing#",
     "mads": str(MADS),
     "mix": str(MIX),
     "mode": "http://www.modeshape.org/1.0",

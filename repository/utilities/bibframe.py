@@ -6,7 +6,7 @@ Purpose:     Helper functions for ingesting BIBFRAME graphs into Fedora 4
 Author:      Jeremy Nelson
 
 Created:     2014/11/02
-Copyright:   (c) Jeremy Nelson 2014
+Copyright:   (c) Jeremy Nelson 2014, 2015
 Licence:     GPLv3
 """
 __author__ = "Jeremy Nelson"
@@ -19,6 +19,7 @@ import re
 import sys
 import urllib.request
 from flask_fedora_commons import build_prefixes, Repository
+from .. import CONTEXT
 from elasticsearch import Elasticsearch
 
 AUTHZ = rdflib.Namespace("http://fedora.info/definitions/v4/authorization#")
@@ -30,6 +31,7 @@ FEDORACONFIG = rdflib.Namespace("http://fedora.info/definitions/v4/config#")
 FEDORARELSEXT = rdflib.Namespace("http://fedora.info/definitions/v4/rels-ext#")
 FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
 IMAGE = rdflib.Namespace("http://www.modeshape.org/images/1.0")
+INDEXING = rdflib.Namespace("http://fedora.info/definitions/v4/indexing#")
 MADS = rdflib.Namespace("http://www.loc.gov/mads/rdf/v1#")
 MIX = rdflib.Namespace("http://www.jcp.org/jcr/mix/1.0")
 MODE = rdflib.Namespace("http://www.modeshape.org/1.0")
@@ -45,32 +47,6 @@ XML = rdflib.Namespace("http://www.w3.org/XML/1998/namespace")
 XMLNS = rdflib.Namespace("http://www.w3.org/2000/xmlns/")
 XS = rdflib.Namespace("http://www.w3.org/2001/XMLSchema")
 XSI = rdflib.Namespace("http://www.w3.org/2001/XMLSchema-instance")
-
-CONTEXT = {
-    "authz": "http://fedora.info/definitions/v4/authorization#",
-    "bf": "http://bibframe.org/vocab/",
-    "dc": "http://purl.org/dc/elements/1.1/",
-    "fcrepo": "http://fedora.info/definitions/v4/repository#",
-    "fedora": "http://fedora.info/definitions/v4/rest-api#",
-    "fedoraconfig": "http://fedora.info/definitions/v4/config#",
-    "fedorarelsext": "http://fedora.info/definitions/v4/rels-ext#",
-    "foaf": "http://xmlns.com/foaf/0.1/",
-    "image": "http://www.modeshape.org/images/1.0",
-    "mads": "http://www.loc.gov/mads/rdf/v1#",
-    "mix": "http://www.jcp.org/jcr/mix/1.0",
-    "mode": "http://www.modeshape.org/1.0",
-    "owl": "http://www.w3.org/2002/07/owl#",
-    "nt": "http://www.jcp.org/jcr/nt/1.0",
-    "premis": "http://www.loc.gov/premis/rdf/v1#",
-    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
-    "schema": "http://schema.org/",
-    "sv": "http://www.jcp.org/jcr/sv/1.0",
-    "test": "info:fedora/test/",
-    "xml": "http://www.w3.org/XML/1998/namespace",
-    "xmlns": "http://www.w3.org/2000/xmlns/",
-    "xs": "http://www.w3.org/2001/XMLSchema",
-    "xsi": "http://www.w3.org/2001/XMLSchema-instance"}
 
 URL_CHECK_RE = re.compile(
     r'^(?:http|ftp)s?://' # http:// or https://
@@ -168,6 +144,21 @@ def dedup(term, elastic_search=Elasticsearch()):
         top_hit = search_result['hits']['hits'][0]
         return top_hit['_source']['fcrepo:hasLocation'][0]
 
+def build_sparql(graph):
+    #sparql = build_prefixes()
+    sparql = "INSERT DATA {\n"
+    subjects = list(set(graph.subjects()))
+    if type(subjects[0]) == rdflib.BNode or len(subjects) > 1:
+        msg = "build_sparql subject cannot be blank or have multiple subjects"
+        raise ValueError(msg)
+    graph_nt = graph.serialize(format='nt').decode()
+    graph_nt = graph_nt.replace(str(subjects[0]), '')
+    sparql += graph_nt[:-1] 
+    # Add indexing Indexable
+    sparql += "<> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+    sparql += "<http://fedora.info/definitions/v4/indexing#Indexable> .\n"
+    return sparql
+
 
 def subjects_list(graph):
     """Method takes a BF graph, takes all subjects and creates subject 
@@ -188,7 +179,7 @@ def subjects_list(graph):
     bnode_subs, subject_graphs = {}, []
     base_url = 'http://{}'.format("example")
     for s in set(graph.subjects()):
-        subject_graph = rdflib.Graph()
+        subject_graph = default_graph()
         if type(s) == rdflib.BNode:
             subject = __get_add__(s)
         else:
@@ -198,6 +189,8 @@ def subjects_list(graph):
             if type(o) == rdflib.BNode:
                 o = __get_add__(o)
             subject_graph.add((subject, p, o))
+        # Add a new indexing type
+        subject_graph.add((subject, RDF.type, INDEXING.Indexable))
         subject_graphs.append(subject_graph)
     return subject_graphs
             
