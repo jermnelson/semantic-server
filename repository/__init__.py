@@ -120,13 +120,6 @@ def ingest_resource(req, resp, resource):
         resp -- Response
         resource -- Parameters
     """
-    if 'port' in self.config["ELASTICSEARCH"]:
-        search_index = Elasticsearch(
-            [{"host": self.config["ELASTICSEARCH"]["host"],
-              "port": self.config["ELASTICSEARCH"]["port"]}])
-    else:
-        search_index = Elasticsearch(self.config["ELASTICSEARCH"])
-    config = params['config']
     body = json.loads(resp.body)
     fcrepo_uri = rdflib.URIRef(body['uri'])
     graph = rdflib.Graph().parse(body['uri'])
@@ -134,7 +127,7 @@ def ingest_resource(req, resp, resource):
         subject=fcrepo_uri,
         predicate=FCREPO.uuid))
     fuseki_sparql = "INSERT DATA {"
-    fuseki_sparql += graph.serialize(format='nt')
+    fuseki_sparql += graph.serialize(format='nt').decode()
     fuseki_sparql += "}"
     Fuseki(resource.config).__load__(fuseki_sparql)
 
@@ -267,8 +260,8 @@ class Repository(object):
             config -- Configuration object
         """
         if 'FEDORA3' in config:
-            admin = config.get('FEDORA3', 'username')
-            admin_pwd = config.get('FEDORA3', 'password')
+            admin = self.config.get('FEDORA3', 'username')
+            admin_pwd = self.config.get('FEDORA3', 'password')
 
         self.fedora = config['FEDORA']
         self.search = Search(config)
@@ -285,7 +278,7 @@ class Repository(object):
                 admin_pwd)
             handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
             self.opener = urllib.request.build_opener(handler)
-
+        self.config = config
 
 
 
