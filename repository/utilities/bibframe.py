@@ -17,6 +17,7 @@ import os
 import rdflib
 import re
 import sys
+import urllib.parse
 import urllib.request
 from flask_fedora_commons import build_prefixes, Repository
 from .. import CONTEXT
@@ -155,9 +156,19 @@ def build_sparql(graph):
     graph_nt = graph_nt.replace(str(subjects[0]), '')
     sparql += graph_nt[:-1] 
     # Add indexing Indexable
-    sparql += "<> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-    sparql += "<http://fedora.info/definitions/v4/indexing#Indexable> .\n"
+    # sparql += "<> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+    # sparql += "<http://fedora.info/definitions/v4/indexing#Indexable> .\n"
     return sparql
+
+
+def ingest_turtle(graph):
+    subject = next(graph.subjects(predicate=rdflib.RDF.type))
+    raw_turtle = graph.serialize(format='turtle')
+    raw_turtle = raw_turtle.decode()
+    turtle = raw_turtle.replace("<{}>".format(subject), "<>")
+    turtle = turtle[:-3]
+    turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
+    return turtle
 
 
 def subjects_list(graph):
@@ -170,6 +181,18 @@ def subjects_list(graph):
     Returns:
        list: A list of all graphs for each subject in graph
     """
+    def __base_url__():
+        for name in ['bf:Work', 'bf:Instance', 'bf:Person']:
+            sparql = "PREFIX rdf: <{}>\nPREFIX bf: <{}>\n".format(RDF, BF)
+            sparql += "SELECT ?subject\n WHERE {"
+            sparql += "?subject rdf:type {0}".format(name)
+            sparql += "}"
+            for subject in graph.query(sparql):
+                if subject:
+                    url = urllib.parse.urlparse(str(subject[0]))
+                    return "{}://{}".format(url.scheme, url.netloc)
+
+            
     def __get_add__(bnode):
         if bnode in bnode_subs:
             return bnode_subs[bnode]
@@ -177,8 +200,9 @@ def subjects_list(graph):
         bnode_subs[bnode] = subject
         return subject
     bnode_subs, subject_graphs = {}, []
-    base_url = 'http://{}'.format("example")
-    for s in set(graph.subjects()):
+    base_url = __base_url__()
+    subjects = list(set(graph.subjects()))
+    for s in subjects:
         subject_graph = default_graph()
         if type(s) == rdflib.BNode:
             subject = __get_add__(s)
