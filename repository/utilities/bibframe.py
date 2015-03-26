@@ -1,4 +1,4 @@
-"""
+:"""
 Name:        bibframe
 Purpose:     Helper functions for ingesting BIBFRAME graphs into Fedora 4
              supported by Elastic Search
@@ -183,11 +183,13 @@ def subjects_list(graph):
     """
     def __base_url__():
         for name in ['bf:Work', 'bf:Instance', 'bf:Person']:
-            sparql = "PREFIX rdf: <{}>\nPREFIX bf: <{}>\n".format(RDF, BF)
-            sparql += "SELECT ?subject\n WHERE {"
-            sparql += "?subject rdf:type {0}".format(name)
-            sparql += "}"
-            for subject in graph.query(sparql):
+            sparql = """PREFIX rdf: <{0}>
+PREFIX bf: <{0}>\n".format(RDF, BF)
+SELECT ?subject 
+WHERE {{
+    ?subject rdf:type {0} .
+}}""" .format(RDF, BF, name)
+           for subject in graph.query(sparql):
                 if subject:
                     url = urllib.parse.urlparse(str(subject[0]))
                     return "{}://{}".format(url.scheme, url.netloc)
@@ -263,7 +265,102 @@ def guess_search_doc_type(graph, fcrepo_uri):
             doc_type = class_name
     return doc_type
 
+
 class GraphIngester(object):
+    dedup_predicates = [
+         BF.authorizedAccessPoint, 
+         BF.classificationNumber,
+         BF.label, 
+         BF.titleValue]
+    prefix = """PREFIX bf:<http://bibframe.org/vocab/>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>"""
+    dedup_sparql = """{}
+SELECT ?subject
+WHERE {{
+    ?subject {{}} "{{}}"^^xsd:string .
+    ?subject rdf:type {{}} .
+}}}""".format(prefix)
+    sameAs_sparql = """{}
+SELECT DISTINCT ?subject
+WHERE {{
+  ?subject owl:sameAs <{{}}> .
+}}""".format(prefix)
+
+    def __init__(self, graph, fedora_url=None, fuseki=None):
+        self.graph = graph 
+        self.fedora_url = fedora_url or 'http://localhost:8080/rest'
+        self.fuseki_url = fuseki or 'http://localhost:3030'
+        self.subjects = []
+
+    def __add_or_get_graph__(self, subject):
+        new_graph = default_graph()
+        bf_type = self.__get_specific_type__(subject)
+        for predicate, object_ in self.graph.predicate_objects(
+                                      subject=subject):
+            if GraphIngester.dedup_predicates.count(predicate) > 0:
+                exists_url = self.__dedup_by_predicate__(
+                        bf_type, 
+                        GraphIngester.dedup_predicates[
+                            GraphIngester.dedup_predicates.index(predicate)],        
+                        str(object_))
+                if exists_url:
+                    return rdflib.Graph().parse(exists_url)
+            existing_obj_url = self.__get_sameAs__(object_)
+            if existing_obj_url:
+                new_graph.add((subject, 
+                               predicate, 
+                               rdflib.URIRef(existing_obj_url)) 
+            else:
+                new_graph.add((subject, 
+                               predicate, 
+                               object_))
+        fedora_result = requests.post(self.fedora_url,
+				      data=ingest_turtle(new_graph),
+				      headers={"Content-Type": "text/turtle"})
+        if fedora_result.status_code 
+         
+             
+   
+    def __dedup_by_predicate__(bf_type, predicate, obj_value): 
+        result = requets.post(
+            self.fuseki_url,
+            data={"query": dedup_sparql.format(predicate, obj_value, bf_type),
+                  "output": "json"})
+        if result.status_code < 400:
+            bindings = result.json().get('results').get('bindings')
+            if len(bindings) > 0:
+                return bindings[0]['subject']['value']
+    
+
+    def __get_specific_type__(self, subject):
+        for rdf_type in graph.objects(subject=subject, predicate=rdflib.RDF.type):
+            if str(rdf_type).startswith("http://bibframe"):
+		return "bf:{}".format(str(rdf_type).split("/")[-1])
+
+    def __get_sameAs__(self, url):
+        result = requests.post(
+            self.fuseki_url, 
+            data={"query": sameAs_sparql.format(url), 
+                  "output": "json"})
+            if result.status_code < 300:
+		result_json = json.loads(result.text)
+		if len(result_json.get('results').get('bindings')) > 0:
+			return result_json['results']['bindings'][0]['subject']['value']
+        
+        
+ 
+    def __process_subject__(self, subject):
+        bf_type = self.__get_specific_type__(subject)
+        existing_uri = self.__get_sameAs__(str(subject))
+        if existing_uri:
+            subject = rdflib.URIRef(existing_uri)
+        new_graph = __add_new_graph__(subject)        
+        
+        
+
+class OldGraphIngester(object):
     """Takes a BIBFRAME graph, extracts all subjects and creates an object in
     Fedora 4 for all triples associated with the subject. The Fedora 4 subject
     graph is then indexed into Elastic Search
