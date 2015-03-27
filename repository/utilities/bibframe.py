@@ -1,4 +1,4 @@
-:"""
+"""
 Name:        bibframe
 Purpose:     Helper functions for ingesting BIBFRAME graphs into Fedora 4
              supported by Elastic Search
@@ -12,6 +12,7 @@ Licence:     GPLv3
 __author__ = "Jeremy Nelson"
 
 import datetime
+import falcon
 import json
 import os
 import rdflib
@@ -184,15 +185,15 @@ def subjects_list(graph):
     def __base_url__():
         for name in ['bf:Work', 'bf:Instance', 'bf:Person']:
             sparql = """PREFIX rdf: <{0}>
-PREFIX bf: <{0}>\n".format(RDF, BF)
+PREFIX bf: <{1}>
 SELECT ?subject 
 WHERE {{
-    ?subject rdf:type {0} .
+    ?subject rdf:type {2} .
 }}""" .format(RDF, BF, name)
-           for subject in graph.query(sparql):
-                if subject:
-                    url = urllib.parse.urlparse(str(subject[0]))
-                    return "{}://{}".format(url.scheme, url.netloc)
+            for subject in graph.query(sparql):
+               if subject:
+                   url = urllib.parse.urlparse(str(subject[0]))
+                   return "{}://{}".format(url.scheme, url.netloc)
 
             
     def __get_add__(bnode):
@@ -220,9 +221,6 @@ WHERE {{
         subject_graphs.append(subject_graph)
     return subject_graphs
             
-               
- 
-
 def default_graph():
     """Function generates a new rdflib Graph and sets all namespaces as part
     of the graph's context"""
@@ -281,18 +279,24 @@ SELECT ?subject
 WHERE {{
     ?subject {{}} "{{}}"^^xsd:string .
     ?subject rdf:type {{}} .
-}}}""".format(prefix)
+}}""".format(prefix)
     sameAs_sparql = """{}
 SELECT DISTINCT ?subject
 WHERE {{
   ?subject owl:sameAs <{{}}> .
 }}""".format(prefix)
+    update_triplestore_sparql = """{}
+INSERT INTO {{
+   {{}}
+}}""".format(prefix)
 
-    def __init__(self, graph, fedora_url=None, fuseki=None):
+
+    def __init__(self, graph, fedora_url=None, fuseki=None, elastic_search=None):
         self.graph = graph 
         self.fedora_url = fedora_url or 'http://localhost:8080/rest'
         self.fuseki_url = fuseki or 'http://localhost:3030'
-        self.subjects = []
+        self.elastic_search = elastic_search or Elasticsearch()
+        self.subjects = subjects_list(self.graph)      
 
     def __add_or_get_graph__(self, subject):
         new_graph = default_graph()
@@ -311,7 +315,7 @@ WHERE {{
             if existing_obj_url:
                 new_graph.add((subject, 
                                predicate, 
-                               rdflib.URIRef(existing_obj_url)) 
+                               rdflib.URIRef(existing_obj_url))) 
             else:
                 new_graph.add((subject, 
                                predicate, 
@@ -319,44 +323,161 @@ WHERE {{
         fedora_result = requests.post(self.fedora_url,
 				      data=ingest_turtle(new_graph),
 				      headers={"Content-Type": "text/turtle"})
-        if fedora_result.status_code 
+        if fedora_result.status_code < 400:
+            graph_url = fedora_result.text
+            return rdflib.Graph().parse(graph_url)    
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to ingest {} into Fedora".format(subject),
+                "Error = {}".format(fedora_result.text))
          
              
    
     def __dedup_by_predicate__(bf_type, predicate, obj_value): 
-        result = requets.post(
-            self.fuseki_url,
+        result = requests.post(
+            "/".join([self.fuseki_url, "bf", "query"]),
             data={"query": dedup_sparql.format(predicate, obj_value, bf_type),
                   "output": "json"})
         if result.status_code < 400:
             bindings = result.json().get('results').get('bindings')
             if len(bindings) > 0:
                 return bindings[0]['subject']['value']
+
+    def __generate_body__(self, graph):
+        self.body = dict()
+        bf_json = json.loads(
+            graph.serialize(
+                format='json-ld',
+                context=CONTEXT).decode())
+        if '@graph' in bf_json:
+            for graph in bf_json.get('@graph'):
+                # Index only those graphs that have been created in the
+                # repository
+                if 'fcrepo:created' in graph:
+                    for key, val in graph.items():
+                        if key in [
+                            'fcrepo:lastModified',
+                            'fcrepo:created',
+                            'fcrepo:uuid'
+                        ]:
+                            self.__set_or_expand__(key, val)
+                        elif key.startswith('@type'):
+                            for name in val:
+                                if name.startswith('bf:'):
+                                    self.__set_or_expand__('type', name)
+                        elif key.startswith('@id'):
+                            self.__set_or_expand__('fcrepo:hasLocation', val)
+                        elif not key.startswith('fcrepo') and not key.startswith('owl'):
+                            self.__set_or_expand__(key, val)
     
 
     def __get_specific_type__(self, subject):
         for rdf_type in graph.objects(subject=subject, predicate=rdflib.RDF.type):
             if str(rdf_type).startswith("http://bibframe"):
-		return "bf:{}".format(str(rdf_type).split("/")[-1])
+                return "bf:{}".format(str(rdf_type).split("/")[-1])
+        # General bf:Resource type as default
+        return "bf:Resource"
+
 
     def __get_sameAs__(self, url):
         result = requests.post(
             self.fuseki_url, 
             data={"query": sameAs_sparql.format(url), 
                   "output": "json"})
-            if result.status_code < 300:
-		result_json = json.loads(result.text)
-		if len(result_json.get('results').get('bindings')) > 0:
-			return result_json['results']['bindings'][0]['subject']['value']
-        
-        
- 
+        if result.status_code < 300:
+            result_json = result.json()
+            if len(result_json.get('results').get('bindings')) > 0:
+                return result_json['results']['bindings'][0]['subject']['value']
+
+    def __get_id_or_value__(self, value):
+        """Helper function takes a dict with either a value or id and returns
+        the dict value
+
+        Args:
+	    value(dict)
+        Returns:
+	    string or None
+        """
+        if '@value' in value:
+            return value.get('@value')
+        elif '@id' in value:
+            return value.get('@id')
+            #! Need to query triplestore?
+	    #if uri in self.uris2uuid:
+	    #    return self.uris2uuid[uri]
+	    #else:
+	    #    return uri
+        return value
+
+    def __index_subject__(self, subject, graph): 
+        self.__generate_body__(graph)
+        doc_id = str(graph.value(
+                     subject=subject,
+                     predicate=FCREPO.uuid))
+        doc_type = self.__get_specific_type__(subject).split(":")[-1]
+        body = self.generate_body(fcrepo_graph)
+        self.elastic_search.index(
+            index='bibframe',
+            doc_type=doc_type,
+            id=doc_id,
+            body=self.body)
+
+    def __populate_triplestore__(self, graph):
+        update_sparql = GraphIngester.update_triplestore_sparql.format(
+            graph.serialize(format='nt'))  
+        fuseki_result = requests.post("/".join([self.fuseki_url, 
+                                                "bf", 
+                                                "update"]),
+			      data=update_sparql,
+			      headers={"Accept": "text/xml"})
+        if fuseki_result.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Could not create ingest graph into Fuseki.",
+		fuseki_result.text)
+
+
+    
     def __process_subject__(self, subject):
         bf_type = self.__get_specific_type__(subject)
         existing_uri = self.__get_sameAs__(str(subject))
         if existing_uri:
             subject = rdflib.URIRef(existing_uri)
-        new_graph = __add_new_graph__(subject)        
+        new_graph = self.__add_or_get_graph__(subject)
+        self.__index_subject__(graph)
+        self.__populate_triplestore__(graph) 
+
+    def __set_or_expand__(self, key, value):
+        """Helper method takes a key and value and either creates a key
+        with either a list or appends an existing key-value to the value
+
+        Args:
+            key
+           value
+        """
+        if key not in body:
+           self.body[key] = []
+        if type(value) == list:
+            for row in value:
+                self.body[key].append(self.__get_id_or_value__(row))
+        else:
+            self.body[key] = [self.__get_id_or_value__(value),]
+
+
+    def ingest(self):
+        start = datetime.datetime.utcnow()
+        print("Started ingesting at {}".format(start))
+        for i, subject in enumerate(self.subjects):
+            if not i%10 and i > 0:
+                print(".", end="")
+            if not i%25:
+                print(i, end="")
+            self.__process_subject__(subject)
+        end = datetime.datetime.utcnow()
+        avg_sec = (end-start).seconds / i
+        print("Finished at {}, total subjects {}, Average per min {}".format(
+            end,
+            i,
+            avg_sec / 60.0))
         
         
 
