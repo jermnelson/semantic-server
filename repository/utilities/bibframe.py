@@ -17,6 +17,7 @@ import json
 import os
 import rdflib
 import re
+import requests
 import sys
 import urllib.parse
 import urllib.request
@@ -218,7 +219,7 @@ WHERE {{
             subject_graph.add((subject, p, o))
         # Add a new indexing type
         subject_graph.add((subject, RDF.type, INDEXING.Indexable))
-        subject_graphs.append(subject_graph)
+        subject_graphs.append((subject, subject_graph))
     return subject_graphs
             
 def default_graph():
@@ -276,19 +277,19 @@ PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>"""
     dedup_sparql = """{}
 SELECT ?subject
-WHERE {{
+WHERE {{{{
     ?subject {{}} "{{}}"^^xsd:string .
     ?subject rdf:type {{}} .
-}}""".format(prefix)
+}}}}""".format(prefix)
     sameAs_sparql = """{}
 SELECT DISTINCT ?subject
-WHERE {{
+WHERE {{{{
   ?subject owl:sameAs <{{}}> .
-}}""".format(prefix)
+}}}}""".format(prefix)
     update_triplestore_sparql = """{}
-INSERT INTO {{
+INSERT DATA {{{{
    {{}}
-}}""".format(prefix)
+}}}}""".format(prefix)
 
 
     def __init__(self, graph, fedora_url=None, fuseki=None, elastic_search=None):
@@ -310,7 +311,7 @@ INSERT INTO {{
                             GraphIngester.dedup_predicates.index(predicate)],        
                         str(object_))
                 if exists_url:
-                    return rdflib.Graph().parse(exists_url)
+                    return exists_url, rdflib.Graph().parse(exists_url)
             existing_obj_url = self.__get_sameAs__(object_)
             if existing_obj_url:
                 new_graph.add((subject, 
@@ -325,7 +326,7 @@ INSERT INTO {{
 				      headers={"Content-Type": "text/turtle"})
         if fedora_result.status_code < 400:
             graph_url = fedora_result.text
-            return rdflib.Graph().parse(graph_url)    
+            return graph_url, rdflib.Graph().parse(graph_url)    
         else:
             raise falcon.HTTPInternalServerError(
                 "Failed to ingest {} into Fedora".format(subject),
@@ -333,10 +334,13 @@ INSERT INTO {{
          
              
    
-    def __dedup_by_predicate__(bf_type, predicate, obj_value): 
+    def __dedup_by_predicate__(self, bf_type, predicate, obj_value): 
         result = requests.post(
             "/".join([self.fuseki_url, "bf", "query"]),
-            data={"query": dedup_sparql.format(predicate, obj_value, bf_type),
+            data={"query": GraphIngester.dedup_sparql.format(
+                               predicate, 
+                               obj_value, 
+                               bf_type),
                   "output": "json"})
         if result.status_code < 400:
             bindings = result.json().get('results').get('bindings')
@@ -372,7 +376,9 @@ INSERT INTO {{
     
 
     def __get_specific_type__(self, subject):
-        for rdf_type in graph.objects(subject=subject, predicate=rdflib.RDF.type):
+        for rdf_type in self.graph.objects(
+            subject=subject, 
+            predicate=rdflib.RDF.type):
             if str(rdf_type).startswith("http://bibframe"):
                 return "bf:{}".format(str(rdf_type).split("/")[-1])
         # General bf:Resource type as default
@@ -380,9 +386,11 @@ INSERT INTO {{
 
 
     def __get_sameAs__(self, url):
+        update_url =  "/".join([self.fuseki_url, "bf", "query"])
+        query = GraphIngester.sameAs_sparql.format(url)
         result = requests.post(
-            self.fuseki_url, 
-            data={"query": sameAs_sparql.format(url), 
+            update_url, 
+            data={"query": query, 
                   "output": "json"})
         if result.status_code < 300:
             result_json = result.json()
@@ -415,7 +423,6 @@ INSERT INTO {{
                      subject=subject,
                      predicate=FCREPO.uuid))
         doc_type = self.__get_specific_type__(subject).split(":")[-1]
-        body = self.generate_body(fcrepo_graph)
         self.elastic_search.index(
             index='bibframe',
             doc_type=doc_type,
@@ -424,27 +431,32 @@ INSERT INTO {{
 
     def __populate_triplestore__(self, graph):
         update_sparql = GraphIngester.update_triplestore_sparql.format(
-            graph.serialize(format='nt'))  
-        fuseki_result = requests.post("/".join([self.fuseki_url, 
-                                                "bf", 
-                                                "update"]),
-			      data=update_sparql,
-			      headers={"Accept": "text/xml"})
+            graph.serialize(format='nt').decode())  
+        update_url = "/".join([self.fuseki_url, 
+                               "bf", 
+                               "update"])
+        fuseki_result = requests.post(update_url,
+			      data={"update": update_sparql})
         if fuseki_result.status_code > 399:
+            print("Error with fuseki {}".format(fuseki_result.text))
             raise falcon.HTTPInternalServerError(
                 "Could not create ingest graph into Fuseki.",
 		fuseki_result.text)
+        print("Finished populate ts")
 
 
     
-    def __process_subject__(self, subject):
+    def __process_subject__(self, row):
+        subject, graph = row
         bf_type = self.__get_specific_type__(subject)
         existing_uri = self.__get_sameAs__(str(subject))
         if existing_uri:
             subject = rdflib.URIRef(existing_uri)
-        new_graph = self.__add_or_get_graph__(subject)
-        self.__index_subject__(graph)
-        self.__populate_triplestore__(graph) 
+        fedora_url, new_graph = self.__add_or_get_graph__(subject)
+        subject_uri = rdflib.URIRef(fedora_url)
+        self.__index_subject__(subject_uri, new_graph)
+        self.__populate_triplestore__(new_graph) 
+        print("Finished processing subject")
 
     def __set_or_expand__(self, key, value):
         """Helper method takes a key and value and either creates a key
@@ -452,9 +464,9 @@ INSERT INTO {{
 
         Args:
             key
-           value
+            value
         """
-        if key not in body:
+        if key not in self.body:
            self.body[key] = []
         if type(value) == list:
             for row in value:
@@ -465,13 +477,19 @@ INSERT INTO {{
 
     def ingest(self):
         start = datetime.datetime.utcnow()
-        print("Started ingesting at {}".format(start))
-        for i, subject in enumerate(self.subjects):
+        print("Started ingesting at {} {}".format(start, len(self.subjects)))
+        for i, row in enumerate(self.subjects):
+            subject, graph = row
             if not i%10 and i > 0:
                 print(".", end="")
             if not i%25:
                 print(i, end="")
-            self.__process_subject__(subject)
+            try:
+                self.__process_subject__(row)
+            except:
+                print("Error with {}, subject={}".format(i, subject))
+                print(sys.exc_info()[0])
+                break
         end = datetime.datetime.utcnow()
         avg_sec = (end-start).seconds / i
         print("Finished at {}, total subjects {}, Average per min {}".format(
