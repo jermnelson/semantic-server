@@ -22,6 +22,7 @@ FEDORACONFIG = rdflib.Namespace("http://fedora.info/definitions/v4/config#")
 FEDORARELSEXT = rdflib.Namespace("http://fedora.info/definitions/v4/rels-ext#")
 FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
 IMAGE = rdflib.Namespace("http://www.modeshape.org/images/1.0")
+INDEXING = rdflib.Namespace("http://fedora.info/definitions/v4/indexing#")
 MADS = rdflib.Namespace("http://www.loc.gov/mads/rdf/v1#")
 MIX = rdflib.Namespace("http://www.jcp.org/jcr/mix/1.0")
 MODE = rdflib.Namespace("http://www.modeshape.org/1.0")
@@ -131,7 +132,14 @@ def ingest_resource(req, resp, resource):
     fuseki_sparql += "}"
     Fuseki(resource.config).__load__(fuseki_sparql)
 
-
+def ingest_turtle(graph):
+    subject = next(graph.subjects(predicate=rdflib.RDF.type))
+    raw_turtle = graph.serialize(format='turtle')
+    raw_turtle = raw_turtle.decode()
+    turtle = raw_turtle.replace("<{}>".format(subject), "<>")
+    turtle = turtle[:-3]
+    turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
+    return turtle
 
 class Info(object):
     """Basic information about available repository services"""
@@ -224,6 +232,90 @@ class Search(object):
             [{"host": config["ELASTICSEARCH"]["host"],
               "port": config["ELASTICSEARCH"]["port"]}])
         self.triplestore = Fuseki(config)
+        self.body = None
+
+
+
+    def __get_id_or_value__(self, value):
+        """Helper function takes a dict with either a value or id and returns
+        the dict value
+
+        Args:
+	    value(dict)
+        Returns:
+	    string or None
+        """
+        if '@value' in value:
+            return value.get('@value')
+        elif '@id' in value:
+            return value.get('@id')
+            #! Need to query triplestore?
+	    #if uri in self.uris2uuid:
+	    #    return self.uris2uuid[uri]
+	    #else:
+	    #    return uri
+        return value
+
+
+    def __generate_body__(self, graph, prefix=None):
+        self.body = dict()
+        graph_json = json.loads(
+            graph.serialize(
+                format='json-ld',
+                context=CONTEXT).decode())
+        if '@graph' in graph_json:
+            for graph in graph_json.get('@graph'):
+                # Index only those graphs that have been created in the
+                # repository
+                if 'fcrepo:created' in graph:
+                    for key, val in graph.items():
+                        if key in [
+                            'fcrepo:lastModified',
+                            'fcrepo:created',
+                            'fcrepo:uuid'
+                        ]:
+                            self.__set_or_expand__(key, val)
+                        elif key.startswith('@type'):
+                            for name in val:
+                                if prefix:
+                                    if name.startswith(prefix):
+                                        self.__set_or_expand__('type', name)
+                                else:
+                                    self.__set_or_expand__('type', name)
+                        elif key.startswith('@id'):
+                            self.__set_or_expand__('fcrepo:hasLocation', val)
+                        elif not key.startswith('fcrepo') and not key.startswith('owl'):
+                            self.__set_or_expand__(key, val) 
+
+    def __index__(self, subject, graph, doc_type, index): 
+        self.__generate_body__(graph)
+        doc_id = str(graph.value(
+                     subject=subject,
+                     predicate=FCREPO.uuid))
+        self.search_index.index(
+            index=index,
+            doc_type=doc_type,
+            id=doc_id,
+            body=self.body)
+
+    def __load_subject__(self, graph):
+        self.triplestore.__load__(graph)
+
+    def __set_or_expand__(self, key, value):
+        """Helper method takes a key and value and either creates a key
+        with either a list or appends an existing key-value to the value
+
+        Args:
+            key
+            value
+        """
+        if key not in self.body:
+           self.body[key] = []
+        if type(value) == list:
+            for row in value:
+                self.body[key].append(self.__get_id_or_value__(row))
+        else:
+            self.body[key] = [self.__get_id_or_value__(value),]
 
     def on_get(self, req, resp):
         """Method takes a a phrase, returns the expanded result.
