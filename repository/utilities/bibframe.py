@@ -51,14 +51,6 @@ XMLNS = rdflib.Namespace("http://www.w3.org/2000/xmlns/")
 XS = rdflib.Namespace("http://www.w3.org/2001/XMLSchema")
 XSI = rdflib.Namespace("http://www.w3.org/2001/XMLSchema-instance")
 
-URL_CHECK_RE = re.compile(
-    r'^(?:http|ftp)s?://' # http:// or https://
-    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' # domain...
-    r'localhost|' # localhost...
-    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|' # ...or ipv4
-    r'\[?[A-F0-9]*:[A-F0-9:]+\]?)' # ...or ipv6
-    r'(?::\d+)?' # optional port
-    r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
 def guess_search_doc_type(graph, fcrepo_uri):
     """Function takes a graph and attempts to guess the Doc type for ingestion
@@ -133,10 +125,20 @@ class Ingester(GraphIngester):
         existing_uri = self.searcher.triplestore.__sameAs__(str(subject))
         if existing_uri:
             subject = rdflib.URIRef(existing_uri)
-        fedora_url, new_graph = self.__add_or_get_graph__(subject, bf_type)
+        fedora_url, new_graph = self.__add_or_get_graph__(
+            subject=subject, 
+            graph_type=bf_type,
+            doc_type=guess_search_doc_type(graph, subject_uri),
+            index='bibframe')
         subject_uri = rdflib.URIRef(fedora_url)
-        self.__index_subject__(subject_uri, new_graph)
-        self.__populate_triplestore__(new_graph) 
+
+    def __clean_up__(self):
+        """Internal method performs update on all subjects of the graph, updating
+        all internal subject URIs to their corresponding Fedora 4 URIs. """
+        for subject, graph in self.subjects:
+            pass
+
+         
 
 
 def main():

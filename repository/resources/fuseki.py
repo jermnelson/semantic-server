@@ -3,8 +3,8 @@ __author__ = "Jeremy Nelson"
 import falcon
 import json
 import rdflib
+import re
 import requests
-
 
 PREFIX = """PREFIX owl: <http://www.w3.org/2002/07/owl#>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -27,6 +27,16 @@ UPDATE_TRIPLESTORE_SPARQL = """{}
 INSERT DATA {{{{
    {{}}
 }}}}""".format(PREFIX)
+
+URL_CHECK_RE = re.compile(
+    r'^(?:http|ftp)s?://' # http:// or https://
+    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' # domain...
+    r'localhost|' # localhost...
+    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|' # ...or ipv4
+    r'\[?[A-F0-9]*:[A-F0-9:]+\]?)' # ...or ipv6
+    r'(?::\d+)?' # optional port
+    r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
 
 class TripleStore(object):
 
@@ -74,11 +84,14 @@ class TripleStore(object):
 
     def __load__(self, rdf):
         fuseki_result = requests.post(self.update_url,
-            data={"update": rdf})
+            data={"update": UPDATE_TRIPLESTORE_SPARQL.format(
+                             rdf.serialize(format='nt').decode())})
         if fuseki_result.status_code > 399:
             raise falcon.HTTPInternalServerError(
                 "Failed to load RDF into {}".format(self.update_url),
-                "Error:\n{}".format(fuseki_result.text))
+                "Error:\n{}\nRDF:\n{}".format(
+                    fuseki_result.text,
+                    rdf))
 
     def __sameAs__(self, url):
         """Internal method takes a url and attempts to retrieve any existing
@@ -87,9 +100,13 @@ class TripleStore(object):
         Args:
             url -- Subject URL
         """
+        if URL_CHECK_RE.search(url):
+            object_str = "<{}>".format(url)
+        else: # Test as a string literal
+            object_str = """"{}"^^xsd:string""".format(url)        
         result = requests.post(
             self.query_url, 
-            data={"query": SAME_AS_SPARQL.format(url), 
+            data={"query": SAME_AS_SPARQL.format(object_str), 
                   "output": "json"})
         if result.status_code < 400:
             result_json = result.json()
@@ -110,6 +127,4 @@ class TripleStore(object):
             msg = "No RDF to load into Fuseki"
         resp.status = falcon.HTTP_200
         resp.body = json.dumps({"message": msg})
-
-
 

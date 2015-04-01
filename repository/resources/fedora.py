@@ -11,6 +11,9 @@ def serialize(req, resp, resource):
     resp.body = json.dumps(req.context['rdf'])
 
 
+
+
+
 class Resource(Repository):
     """Fedora Resource wrapper, see
     https://wiki.duraspace.org/display/FEDORA40/Glossary#Glossary-Resource
@@ -26,19 +29,60 @@ class Resource(Repository):
             self.fedora['port'])
         self.searcher = Search(config)
 
+    def __create__(self, **kwargs):
+        """Internal method takes optional parameters and creates a new
+        Resource in Fedora, stores resulting triples in Fuseki and indexes
+        the Resource into Elastic Search
+
+	keyword args:
+            binary -- Binary object for the Fedora Object, metadata will
+                be stored as metadata to Binary.
+            doc_type -- Elastic search document type, defaults to None
+	    id -- Existing identifier defaults to None
+            index -- Elastic search index, defaults to None
+            rdf -- RDF graph of new object, defaults to None
+            rdf_type -- RDF Type, defaults to text/turtle
+        """
+        binary = kwargs.get('binary', None)
+        doc_type = kwargs.get('doc_type', None)
+        ident = kwargs.get('id', None)
+        index = kwargs.get('index', None)
+        rdf = kwargs.get('rdf', None)
+        rdf_type = kwargs.get('rdf_type', 'text/turtle') 
+        resource_url = None
+        if ident:
+            fedora_post_url = "/".join([self.rest_url, ident])
+        else:
+            fedora_post_url = self.rest_url
+        # First check and add binary datastream
+        if binary:
+            resource_url = self.__new_binary__(fedora_post_url, binary)
+        # Next handle any attached RDF
+        if rdf:
+            resource_url = self.__new_by_rdf__(
+                fedora_post_url, 
+                rdf, 
+                rdf_type )
+         # Finally, create a stub Fedora object if not resource_uri
+        if not resource_url:
+             stub_result = requests.post(
+                 fedora_post_url)
+             resource_url = stub_result.text
+        subject = rdflib.URIRef(resource_url)
+        graph = rdflib.Graph().parse(resource_url)
+        self.searcher.__index__(subject, graph, doc_type, index)
+        self.searcher.triplestore.__load__(graph)
+        return resource_url
+
+
+
     def __new_by_rdf__(self, post_url, rdf, rdf_type):
         # If rdf is a rdflib.Graph, attempt to serialize
         if type(rdf) == rdflib.Graph:
-            if rdf_type.endswith('turtle'):
-                rdf = rdf.serialize(format='turtle')
-            elif rdf_type.endswith('nt'):
-                rdf = rdf.serialize(format='nt')
-            elif rdf_type.count('json') > 0: # various json variants
-                rdf = rdf.serialize(format='json-ld')
-            else: # default is xml
-                rdf = rdf.serialize()
+            rdf = ingest_turtle(rdf)
+            rdf_type = 'text/turtle'
         rdf_result = requests.post(
-                fedora_post_url,
+                post_url,
                 data=rdf,
                 headers={"Content-type": rdf_type})
         if rdf_result.status_code > 399:
@@ -63,43 +107,6 @@ class Resource(Repository):
         return "/".join([binary_result.text, "fcr:metadata"])
        
 
-    def __create__(self, **kwargs):
-        """Internal method takes optional parameters and creates a new
-        Resource in Fedora, stores resulting triples in Fuseki and indexes
-        the Resource into Elastic Search
-
-	keyword args:
-            binary -- Binary object for the Fedora Object, metadata will
-                be stored as metadata to Binary.
-	    id -- Existing identifier defaults to None
-            rdf -- RDF graph of new object, default to None
-            rdf-type -- RDF Type, default to text/turtle
-        """
-        binary = kwargs.get('binary', None)
-        ident = kwargs.get('id', None)
-        rdf = kwargs.get('rdf', None)
-        rdf_type = kwargs.get('rdf-type', 'text/turtle') 
-        resource_url = None
-        if ident:
-            fedora_post_url = "/".join([self.rest_url, ident])
-        else:
-            fedora_post_url = self.rest_url
-        # First check and add binary datastream
-        if binary:
-            resource_url = self.__new_binary__(fedora_post_url, binary)
-        # Next handle any attached RDF
-        if rdf:
-            resource_url = self.__new_by_rdf__(fedora_post_url, rdf, rdf_type)
-         # Finally, create a stub Fedora object if not resource_uri
-        if not resource_url:
-             stub_result = requests.post(
-                 fedora_post_url)
-             resource_url = stub_result.text
-        subject = rdflib.URIRef(resource_url)
-        graph = rdflib.Graph().parse(resource_url)
-        self.searcher.__index__(subject, graph)
-        self.searcher.__load__(graph)
-        return resource_url
 
 
     def on_delete(self, req, resp, id):
@@ -203,6 +210,16 @@ class Resource(Repository):
             result = urllib.request.urlopen(fedora_url_request)
         return True
 
+class Container(Resource):
+    
+    def __init__(self, config):
+        super(Container, config).__init__(config)
+
+    def on_get(self, req, resp):
+        pass
+
+    def on_post(self, req, resp):
+        pass
 
 
 class Transaction(Repository):

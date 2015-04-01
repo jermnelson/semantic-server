@@ -8,7 +8,7 @@ import sys
 from elasticsearch import Elasticsearch
 from .. import CONTEXT, INDEXING, RDF, Search
 from ..resources import fedora
-from .fuseki import Fuseki
+from ..resources.fuseki import TripleStore
 
 def default_graph():
     """Function generates a new rdflib Graph and sets all namespaces as part
@@ -98,8 +98,16 @@ class GraphIngester(object):
                                predicate, 
                                object_))
         resource = fedora.Resource(self.config)
-        resource_url = resource.__create__(rdf=new_graph)
+        resource_url = resource.__create__(rdf=new_graph, subject=subject)
         return resource_url, rdflib.Graph().parse(resource_url)
+
+
+    def __clean_up__(self):
+        """Internal method performs update on all subjects of the graph, updating
+        all internal subject URIs to their corresponding Fedora 4 URIs. The last
+        subject graphs processed should have correct references, earlier ones may
+        not. This method should be overridden by child classes"""
+        pass
 
         
     def __get_types__(self, subject, startstr, prefix):
@@ -141,6 +149,7 @@ class GraphIngester(object):
             #    print("Error with {}, subject={}".format(i, subject))
             #    print(sys.exc_info()[0])
             #    break
+        self.__clean_up__()
         end = datetime.datetime.utcnow()
         avg_sec = (end-start).seconds / i
         print("Finished at {}, total subjects {}, Average per min {}".format(

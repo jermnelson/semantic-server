@@ -130,7 +130,7 @@ def ingest_resource(req, resp, resource):
     fuseki_sparql = "INSERT DATA {"
     fuseki_sparql += graph.serialize(format='nt').decode()
     fuseki_sparql += "}"
-    Fuseki(resource.config).__load__(fuseki_sparql)
+    TripleStore(resource.config).__load__(fuseki_sparql)
 
 def ingest_turtle(graph):
     subject = next(graph.subjects(predicate=rdflib.RDF.type))
@@ -231,7 +231,7 @@ class Search(object):
         self.search_index = Elasticsearch(
             [{"host": config["ELASTICSEARCH"]["host"],
               "port": config["ELASTICSEARCH"]["port"]}])
-        self.triplestore = Fuseki(config)
+        self.triplestore = TripleStore(config)
         self.body = None
 
 
@@ -297,9 +297,6 @@ class Search(object):
             doc_type=doc_type,
             id=doc_id,
             body=self.body)
-
-    def __load_subject__(self, graph):
-        self.triplestore.__load__(graph)
 
     def __set_or_expand__(self, key, value):
         """Helper method takes a key and value and either creates a key

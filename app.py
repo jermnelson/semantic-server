@@ -20,7 +20,7 @@ try:
     from .repository.resources.islandora import IslandoraDatastream
     from .repository.resources.islandora import IslandoraObject
     from .repository.resources.islandora import IslandoraRelationship
-    from .repository.utilities.fuseki import Fuseki
+    from .repository.resources.fuseki import TripleStore
     from .repository.utilities.migrating.foxml import FoxmlContentHandler
 except (SystemError, ImportError):
     from repository import Info, Search
@@ -29,7 +29,7 @@ except (SystemError, ImportError):
     from repository.resources.islandora import IslandoraDatastream
     from repository.resources.islandora import IslandoraObject
     from repository.resources.islandora import IslandoraRelationship
-    from repository.utilities.fuseki import Fuseki
+    from repository.resources.fuseki import TripleStore
     from repository.utilities.migrating.foxml import FoxmlContentHandler
 
 api = None
