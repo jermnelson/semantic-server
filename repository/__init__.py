@@ -11,7 +11,7 @@ import re
 import urllib.request
 
 from elasticsearch import Elasticsearch
-from .utilities.fuseki import Fuseki
+from .resources.fuseki import TripleStore
 
 AUTHZ = rdflib.Namespace("http://fedora.info/definitions/v4/authorization#")
 BF = rdflib.Namespace("http://bibframe.org/vocab/")

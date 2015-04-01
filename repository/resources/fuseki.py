@@ -20,7 +20,7 @@ WHERE {{{{
 SAME_AS_SPARQL = """{}
 SELECT DISTINCT ?subject
 WHERE {{{{
-  ?subject owl:sameAs <{{}}> .
+  ?subject owl:sameAs {{}} .
 }}}}""".format(PREFIX)
 
 UPDATE_TRIPLESTORE_SPARQL = """{}
@@ -28,7 +28,7 @@ INSERT DATA {{{{
    {{}}
 }}}}""".format(PREFIX)
 
-class Fuseki(object):
+class TripleStore(object):
 
     def __init__(self, config):
         url = "http://{}:{}".format(
