@@ -6,13 +6,10 @@ import rdflib
 import urllib.request
 import urllib.parse
 from .. import Repository, Search, ingest_resource, ingest_turtle
+from ..utilities.namespaces import *
 
 def serialize(req, resp, resource):
     resp.body = json.dumps(req.context['rdf'])
-
-
-
-
 
 class Resource(Repository):
     """Fedora Resource wrapper, see

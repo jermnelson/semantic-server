@@ -4,11 +4,13 @@ import datetime
 import falcon
 import rdflib
 import sys
+import urllib.parse
 
 from elasticsearch import Elasticsearch
 from .. import CONTEXT, INDEXING, RDF, Search
 from ..resources import fedora
 from ..resources.fuseki import TripleStore
+from .namespaces import *
 
 def default_graph():
     """Function generates a new rdflib Graph and sets all namespaces as part
@@ -17,6 +19,22 @@ def default_graph():
     for key, value in CONTEXT.items():
         new_graph.namespace_manager.bind(key, value)
     return new_graph
+
+def valid_uri(uri):
+    """function takes a rdflib.URIRef and checks if it is valid for 
+    serialization, quotes path if invalid.
+
+    Args:
+        uri -- rdflib.URIRef
+    """
+    try:
+        rdflib.URIRef(str(uri))
+    except:
+        url = urllib.parse.urlparse(str(uri))
+        new_url = url.geturl().replace(url.path, urllib.parse.quote(url.path))
+        uri = rdflib.URIRef(new_url)
+    return uri
+
 
 def subjects_list(graph, base_url):
     """Method from a RDF graph, takes all subjects and creates separate 
@@ -46,6 +64,8 @@ def subjects_list(graph, base_url):
         for p,o in graph.predicate_objects(s):
             if type(o) == rdflib.BNode:
                 o = __get_add__(o)
+            if type(o) == rdflib.URIRef:
+                o = valid_uri(o)
             subject_graph.add((subject, p, o))
         # Add a new indexing type
         subject_graph.add((subject, RDF.type, INDEXING.Indexable))
@@ -58,25 +78,31 @@ class GraphIngester(object):
     Elasticseach. This base class is used by both bibframe.Ingester and
     schema.Ingester child classes in the semantic server"""
 
-    
 
     def __init__(self, **kwargs):
         self.graph = kwargs.get('graph') 
         self.config = kwargs.get('config')
         self.base_url = kwargs.get('base_url')
-        self.searcher = Search(self.config)
+        self.searcher = kwargs.get('search', Search(self.config))
         self.subjects = subjects_list(self.graph, self.base_url)     
         self.dedup_predicates = []
 
-    def __add_or_get_graph__(self, subject, graph_type):
+
+    def __add_or_get_graph__(self, **kwargs):
         """Helper method takes a subject rdflib.URIRef and graph_type
         to search triple-store and either returns the subject if it 
         already exists or creates a new graph in a Fedora Repository.
 
-        Args:
+        Keyword args:
             subject -- rdflib.URIRef
             graph_type -- Graph type to dedup
-        """
+            index -- Elastic search index, defaults to None    
+            doc_type -- Elastic search doc type for graph, defaults to None
+        """ 
+        subject = kwargs.get('subject') 
+        graph_type = kwargs.get('graph_type')
+        doc_type=kwargs.get('doc_type', None)
+        index=kwargs.get('index', None)
         new_graph = default_graph()
         for predicate, object_ in self.graph.predicate_objects(
                                       subject=subject):
@@ -98,7 +124,12 @@ class GraphIngester(object):
                                predicate, 
                                object_))
         resource = fedora.Resource(self.config)
-        resource_url = resource.__create__(rdf=new_graph, subject=subject)
+        resource_url = resource.__create__(
+            rdf=new_graph, 
+            subject=subject, 
+            doc_type=doc_type,
+            index=index
+        )
         return resource_url, rdflib.Graph().parse(resource_url)
 
 
@@ -134,14 +165,16 @@ class GraphIngester(object):
         pass
 
 
-    def ingest(self):
+    def ingest(self, quiet=True):
         start = datetime.datetime.utcnow()
-        print("Started ingesting at {} {}".format(start, len(self.subjects)))
+        if not quiet:
+            print("Started ingesting at {} {}".format(start, len(self.subjects)))
         for i, row in enumerate(self.subjects):
             subject, graph = row
-            if not i%10 and i > 0:
+            if not i%10 and i > 0 and not quiet:
+
                 print(".", end="")
-            if not i%25:
+            if not i%25 and not quiet:
                 print(i, end="")
             #try:
             self.__process_subject__(row)
@@ -152,7 +185,8 @@ class GraphIngester(object):
         self.__clean_up__()
         end = datetime.datetime.utcnow()
         avg_sec = (end-start).seconds / i
-        print("Finished at {}, total subjects {}, Average per min {}".format(
+        if not quiet:
+            print("Finished at {}, total subjects {}, Average per min {}".format(
             end,
             i,
             avg_sec / 60.0))

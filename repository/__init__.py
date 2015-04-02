@@ -12,33 +12,7 @@ import urllib.request
 
 from elasticsearch import Elasticsearch
 from .resources.fuseki import TripleStore
-
-AUTHZ = rdflib.Namespace("http://fedora.info/definitions/v4/authorization#")
-BF = rdflib.Namespace("http://bibframe.org/vocab/")
-DC = rdflib.Namespace("http://purl.org/dc/elements/1.1/")
-FCREPO = rdflib.Namespace("http://fedora.info/definitions/v4/repository#")
-FEDORA = rdflib.Namespace("http://fedora.info/definitions/v4/rest-api#")
-FEDORACONFIG = rdflib.Namespace("http://fedora.info/definitions/v4/config#")
-FEDORARELSEXT = rdflib.Namespace("http://fedora.info/definitions/v4/rels-ext#")
-FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
-IMAGE = rdflib.Namespace("http://www.modeshape.org/images/1.0")
-INDEXING = rdflib.Namespace("http://fedora.info/definitions/v4/indexing#")
-MADS = rdflib.Namespace("http://www.loc.gov/mads/rdf/v1#")
-MIX = rdflib.Namespace("http://www.jcp.org/jcr/mix/1.0")
-MODE = rdflib.Namespace("http://www.modeshape.org/1.0")
-MODSRDF = rdflib.Namespace("http://www.loc.gov/mods/modsrdf/v1")
-NT = rdflib.Namespace("http://www.jcp.org/jcr/nt/1.0")
-OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
-PREMIS = rdflib.Namespace("http://www.loc.gov/premis/rdf/v1#")
-RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
-SCHEMA = rdflib.Namespace("http://schema.org/")
-SV = rdflib.Namespace("http://www.jcp.org/jcr/sv/1.0")
-TEST = rdflib.Namespace("info:fedora/test/")
-XML = rdflib.Namespace("http://www.w3.org/XML/1998/namespace")
-XMLNS = rdflib.Namespace("http://www.w3.org/2000/xmlns/")
-XS = rdflib.Namespace("http://www.w3.org/2001/XMLSchema")
-XSI = rdflib.Namespace("http://www.w3.org/2001/XMLSchema-instance")
+from .utilites.namespaces import *
 
 CONTEXT = {
     "authz": str(AUTHZ),
@@ -127,9 +101,7 @@ def ingest_resource(req, resp, resource):
     doc_id = str(graph.value(
         subject=fcrepo_uri,
         predicate=FCREPO.uuid))
-    fuseki_sparql = "INSERT DATA {"
-    fuseki_sparql += graph.serialize(format='nt').decode()
-    fuseki_sparql += "}"
+
     TripleStore(resource.config).__load__(fuseki_sparql)
 
 def ingest_turtle(graph):
@@ -287,11 +259,22 @@ class Search(object):
                         elif not key.startswith('fcrepo') and not key.startswith('owl'):
                             self.__set_or_expand__(key, val) 
 
+    def __generate_suggestion__(self, subject, graph):
+        """Helper method should be overridden by child classes, used for autocorrection 
+        in Elastic search 
+
+        Args:
+            subject -- RDF Subject
+            graph -- rdflib.Graph
+        """
+        pass
+
     def __index__(self, subject, graph, doc_type, index): 
         self.__generate_body__(graph)
         doc_id = str(graph.value(
                      subject=subject,
                      predicate=FCREPO.uuid))
+        self.__generate_suggestion__(subject, graph, doc_id)
         self.search_index.index(
             index=index,
             doc_type=doc_type,

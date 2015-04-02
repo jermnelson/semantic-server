@@ -22,34 +22,9 @@ import sys
 import urllib.parse
 import urllib.request
 from .ingesters import default_graph, GraphIngester, subjects_list
-from .. import CONTEXT
+from .. import CONTEXT, Search
 from elasticsearch import Elasticsearch
-
-AUTHZ = rdflib.Namespace("http://fedora.info/definitions/v4/authorization#")
-BF = rdflib.Namespace("http://bibframe.org/vocab/")
-DC = rdflib.Namespace("http://purl.org/dc/elements/1.1/")
-FCREPO = rdflib.Namespace("http://fedora.info/definitions/v4/repository#")
-FEDORA = rdflib.Namespace("http://fedora.info/definitions/v4/rest-api#")
-FEDORACONFIG = rdflib.Namespace("http://fedora.info/definitions/v4/config#")
-FEDORARELSEXT = rdflib.Namespace("http://fedora.info/definitions/v4/rels-ext#")
-FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
-IMAGE = rdflib.Namespace("http://www.modeshape.org/images/1.0")
-INDEXING = rdflib.Namespace("http://fedora.info/definitions/v4/indexing#")
-MADS = rdflib.Namespace("http://www.loc.gov/mads/rdf/v1#")
-MIX = rdflib.Namespace("http://www.jcp.org/jcr/mix/1.0")
-MODE = rdflib.Namespace("http://www.modeshape.org/1.0")
-NT = rdflib.Namespace("http://www.jcp.org/jcr/nt/1.0")
-OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
-PREMIS = rdflib.Namespace("http://www.loc.gov/premis/rdf/v1#")
-RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
-SCHEMA = rdflib.Namespace("http://schema.org/")
-SV = rdflib.Namespace("http://www.jcp.org/jcr/sv/1.0")
-TEST = rdflib.Namespace("info:fedora/test/")
-XML = rdflib.Namespace("http://www.w3.org/XML/1998/namespace")
-XMLNS = rdflib.Namespace("http://www.w3.org/2000/xmlns/")
-XS = rdflib.Namespace("http://www.w3.org/2001/XMLSchema")
-XSI = rdflib.Namespace("http://www.w3.org/2001/XMLSchema-instance")
+from .namespaces import *
 
 
 def guess_search_doc_type(graph, fcrepo_uri):
@@ -103,6 +78,7 @@ WHERE {{
 class Ingester(GraphIngester):
 
     def __init__(self, **kwargs):
+        kwargs['search'] = BibframeSearch(kwargs.get('config'))
         super(Ingester, self).__init__(**kwargs)
         self.base_url = get_base_url(self.graph) 
         self.subjects = subjects_list(self.graph, self.base_url)
@@ -128,7 +104,7 @@ class Ingester(GraphIngester):
         fedora_url, new_graph = self.__add_or_get_graph__(
             subject=subject, 
             graph_type=bf_type,
-            doc_type=guess_search_doc_type(graph, subject_uri),
+            doc_type=guess_search_doc_type(graph, subject),
             index='bibframe')
         subject_uri = rdflib.URIRef(fedora_url)
 
@@ -139,7 +115,33 @@ class Ingester(GraphIngester):
             pass
 
          
+class BibframeSearch(Search):
 
+    def __init__(self, **kwargs):
+        super(BibframeSearch, self).__init__(**kwargs)
+
+    def __generate_suggestion__(self, subject, graph, doc_id):
+        """Internal method generates Elastic Search auto-suggestion
+        for a selected number of BIBFRAME Classes including Instance,
+        Work, Person, Place, Organization, Topic
+
+        Args:
+            subject -- RDF Subject
+            graph -- rdflib.Graph
+            doc_id -- document id to return
+        """
+        add_suggestion = False
+        for type_of in graph.objects(subject=subject, predicate=RDF.type):
+            if [BF.Work. BF.Instance, BF.Place, BF.Organization, BF.Title].count(
+                add_suggestion = True
+        if add_suggestion:
+            self.body['suggest'] = {
+                "input": [],
+                "output": "",
+                "payload": {"id": doc_id}}
+
+                                
+        
 
 def main():
     """Main function"""
