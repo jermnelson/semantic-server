@@ -103,8 +103,33 @@ class Resource(Repository):
                     binary_result.text))
         return "/".join([binary_result.text, "fcr:metadata"])
        
+    def __new_property__(self, resource_url, name, value):
+        """Internal property adds a property to a Fedora Resource
 
+        Args:
+            resource_url -- Fedora URL for the resource
+            name -- Name of property, should have correct prefix (i.e. bf, 
+                    schema, fedora) 
+            value -- value of property 
+        Returns:
+            boolean -- outcome of PATCH method call to Fedora
+        """
 
+    def __replace_property__(self, resource_url, name, old_value, new_value):
+        """Internal method replaces a resource's existing property with a
+        new value.
+
+        Args:
+            resource_url -- Fedora URL for the resource
+            name -- Name of property, should have correct prefix (i.e. bf, 
+                    schema, fedora) 
+            old_value -- Old value of property, must match existing property's
+                    value
+            new_value -- New value of property
+        Returns:
+            boolean -- outcome of PATCH method call to Fedora
+        """
+        pass
 
     def on_delete(self, req, resp, id):
         """DELETE Method either deletes one or more predicate and objects from a

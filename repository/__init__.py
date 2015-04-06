@@ -12,7 +12,7 @@ import urllib.request
 
 from elasticsearch import Elasticsearch
 from .resources.fuseki import TripleStore
-from .utilites.namespaces import *
+from .utilities.namespaces import *
 
 CONTEXT = {
     "authz": str(AUTHZ),

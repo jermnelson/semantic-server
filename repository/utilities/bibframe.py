@@ -94,7 +94,12 @@ class Ingester(GraphIngester):
             # General bf:Resource type as default
             return "bf:Resource"
         return bf_type[0]
-    
+   
+    def __add_held_items__(self, **kwargs):
+        """Helper method is intended to be overridden by Ingester children"""
+        pass
+
+ 
     def __process_subject__(self, row):
         subject, graph = row
         bf_type = self.__get_specific_type__(subject)
@@ -107,6 +112,7 @@ class Ingester(GraphIngester):
             doc_type=guess_search_doc_type(graph, subject),
             index='bibframe')
         subject_uri = rdflib.URIRef(fedora_url)
+        return subject_uri
 
     def __clean_up__(self):
         """Internal method performs update on all subjects of the graph, updating
@@ -115,7 +121,7 @@ class Ingester(GraphIngester):
             pass
 
          
-class BibframeSearch(Search):
+class BIBFRAMESearch(Search):
 
     def __init__(self, **kwargs):
         super(BibframeSearch, self).__init__(**kwargs)
@@ -133,6 +139,7 @@ class BibframeSearch(Search):
         add_suggestion = False
         for type_of in graph.objects(subject=subject, predicate=RDF.type):
             if [BF.Work. BF.Instance, BF.Place, BF.Organization, BF.Title].count(
+                type_of):
                 add_suggestion = True
         if add_suggestion:
             self.body['suggest'] = {
