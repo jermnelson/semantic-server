@@ -86,6 +86,12 @@ def create_sparql_insert_row(predicate, object_):
     return statement
 
 
+def generate_prefix():
+    prefix = ''
+    for key, value in CONTEXT.items():
+        prefix += 'PREFIX {}:<{}>\n'.format(key, value)
+    return prefix 
+
 def ingest_resource(req, resp, resource):
     """Decorator function for ingesting a Resource into Elastic Search
     and Fuseki
@@ -259,15 +265,15 @@ class Search(object):
                         elif not key.startswith('fcrepo') and not key.startswith('owl'):
                             self.__set_or_expand__(key, val) 
 
-    def __generate_suggestion__(self, subject, graph):
-        """Helper method should be overridden by child classes, used for autocorrection 
-        in Elastic search 
-
-        Args:
-            subject -- RDF Subject
-            graph -- rdflib.Graph
-        """
-        pass
+#    def __generate_suggestion__(self, subject, graph):
+#        """Helper method should be overridden by child classes, used for autocorrection 
+#        in Elastic search 
+#
+#        Args:
+#            subject -- RDF Subject
+#            graph -- rdflib.Graph
+#        """
+#        pass
 
     def __index__(self, subject, graph, doc_type, index): 
         self.__generate_body__(graph)
@@ -297,6 +303,40 @@ class Search(object):
         else:
             self.body[key] = [self.__get_id_or_value__(value),]
 
+    def __update__(self, **kwargs):
+        """Helper method updates a stored document in Elastic Search. Method
+        must either doc_id but not both.
+
+        Keyword args:
+            doc_id -- Elastic search document ID
+            field -- Field name to update index, raises exception if None
+            value -- Field value to update index, raises exception if None
+        """
+        doc_id, doc_type, index = kwargs.get('doc_id'), None, None
+        if not doc_id:
+            raise falcon.HTTPMissingParam("doc_id")
+        field = kwargs.get('field')
+        if not field:
+            raise falcon.HTTPMissingParam("field")
+        value = kwargs.get('value')
+        if not value:
+            raise falcon.HTTPMissingParam("field")
+        for row in self.search_index.indices:
+            # Doc id should be unique across all indices 
+            if self.search_index.exists(index=row, id=doc_id): 
+                result = self.search_index.get(index=row, id=doc_id)
+                doc_type = result['_type']
+                index=row
+                break
+        if doc_type is None or index is None:
+            raise falcon.HTTPNotFound()                 
+        self.search_index.update(
+            index=index,
+            doc_type=doc_type,
+            id=doc_id,
+            body={field: self.__get_id_or_value__(value)})         
+            
+
     def on_get(self, req, resp):
         """Method takes a a phrase, returns the expanded result.
 
@@ -317,6 +357,44 @@ class Search(object):
                 q=phrase,
                 size=size))
         resp.status = falcon.HTTP_200
+
+    def on_patch(self, req, resp):
+        """Method takes either sparql statement or predicate and object 
+        and updates the Resource.
+
+        Args:
+            req -- Request
+            resp -- Response
+        """
+        doc_uuid = req.get_param('uuid')
+        if not doc_uuid:
+            raise falcon.HTTPMissingParam('uuid')
+        predicate = req.get_param('predicate') or None
+        if not predicate:
+            raise falcon.HTTPMissingParam('predicate')
+        object_ = req.get_param('object') or None
+        if not object_:
+            raise falcon.HTTPMissingParam('object')
+        doc_type = req.get_param('doc_type') or None
+        if self.__update__(
+            doc_id=doc_uuid,
+            doc_type=doc_type,
+            field=predicate,
+            value=object_):
+            resp.status = falcon.HTTP_202
+            resp.body = json.dumps(True)
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Error with PATCH for {}".format(doc_uuid),
+                "Failed setting {} to {}".format(
+                    predicate,
+                    object_))
+                                   
+        
+             
+          
+            
+        
 
     def url_from_id(self, id):
         return fedora_url

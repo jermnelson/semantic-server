@@ -78,7 +78,8 @@ WHERE {{
 class Ingester(GraphIngester):
 
     def __init__(self, **kwargs):
-        kwargs['search'] = BibframeSearch(kwargs.get('config'))
+        if not 'search' in kwargs:
+            kwargs['search'] = BIBFRAMESearch(config=kwargs.get('config'))
         super(Ingester, self).__init__(**kwargs)
         self.base_url = get_base_url(self.graph) 
         self.subjects = subjects_list(self.graph, self.base_url)
@@ -122,9 +123,16 @@ class Ingester(GraphIngester):
 
          
 class BIBFRAMESearch(Search):
+    SUGGESTION_TYPES = [
+        BF.Work, 
+        BF.Instance, 
+        BF.Place, 
+        BF.Organization, 
+        BF.Title]
 
     def __init__(self, **kwargs):
-        super(BibframeSearch, self).__init__(**kwargs)
+        super(BIBFRAMESearch, self).__init__(**kwargs)
+
 
     def __generate_suggestion__(self, subject, graph, doc_id):
         """Internal method generates Elastic Search auto-suggestion
@@ -138,9 +146,10 @@ class BIBFRAMESearch(Search):
         """
         add_suggestion = False
         for type_of in graph.objects(subject=subject, predicate=RDF.type):
-            if [BF.Work. BF.Instance, BF.Place, BF.Organization, BF.Title].count(
+            if BIBFRAMESearch.SUGGESTION_TYPES.count(
                 type_of):
                 add_suggestion = True
+                break
         if add_suggestion:
             self.body['suggest'] = {
                 "input": [],

@@ -124,7 +124,7 @@ class GraphIngester(object):
                 new_graph.add((subject, 
                                predicate, 
                                object_))
-        resource = fedora.Resource(self.config)
+        resource = fedora.Resource(self.config, self.searcher)
         resource_url = resource.__create__(
             rdf=new_graph, 
             subject=subject, 

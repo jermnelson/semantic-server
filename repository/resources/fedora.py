@@ -5,8 +5,23 @@ import requests
 import rdflib
 import urllib.request
 import urllib.parse
-from .. import Repository, Search, ingest_resource, ingest_turtle
+from .. import Repository, Search, generate_prefix, ingest_resource, ingest_turtle 
 from ..utilities.namespaces import *
+
+PREFIX = generate_prefix()
+
+NEW_SPARQL = """{}
+INSERT DATA {{{{
+  <{{url}}> {{name}} {{value}} 
+}}}}""".format(PREFIX)    
+
+REPLACE_SPARQL = """{}
+DELETE {{{{
+<{{url}}> {{name}} {{old_value}}
+}}}} INSERT {{{{
+<{{url}}> {{name}} {{new_value}}
+}}}} WHERE {{{{
+}}}}""".format(PREFIX)
 
 def serialize(req, resp, resource):
     resp.body = json.dumps(req.context['rdf'])
@@ -19,12 +34,16 @@ class Resource(Repository):
     >> resource = fedora.Resource()
     """
 
-    def __init__(self, config):
+    def __init__(self, config, searcher=None):
         super(Resource, self).__init__(config)
         self.rest_url = "http://{}:{}/rest".format(
             self.fedora['host'],
             self.fedora['port'])
-        self.searcher = Search(config)
+        if searcher is None:
+            self.searcher = Search(config)
+        else:
+            self.searcher = searcher
+        self.graph, self.uuid = None, None
 
     def __create__(self, **kwargs):
         """Internal method takes optional parameters and creates a new
@@ -66,9 +85,12 @@ class Resource(Repository):
                  fedora_post_url)
              resource_url = stub_result.text
         subject = rdflib.URIRef(resource_url)
-        graph = rdflib.Graph().parse(resource_url)
-        self.searcher.__index__(subject, graph, doc_type, index)
-        self.searcher.triplestore.__load__(graph)
+        self.graph = rdflib.Graph().parse(resource_url)
+        self.uuid = str(self.graph.value(
+                        subject=subject,
+                        predicate=FCREPO.uuid))
+        self.searcher.__index__(subject, self.graph, doc_type, index)
+        self.searcher.triplestore.__load__(self.graph)
         return resource_url
 
 
@@ -92,6 +114,16 @@ class Resource(Repository):
 
 
     def __new_binary__(self, post_url, binary):
+        """Internal method takes a Fedora POST url and a binary file to 
+        create a Fedora Object and returns the fcr:metadata URL for 
+        adding the binary's associated metadata.
+
+        Args:
+            post_url -- Fedora POST url
+            binary -- binary datastream
+        Returns:
+            new url for binary datastream's metadata
+        """
         binary_result = requests.post(
             fedora_post_url,
             data=binary)
@@ -104,7 +136,7 @@ class Resource(Repository):
         return "/".join([binary_result.text, "fcr:metadata"])
        
     def __new_property__(self, resource_url, name, value):
-        """Internal property adds a property to a Fedora Resource
+        """Internal method adds a property to a Fedora Resource
 
         Args:
             resource_url -- Fedora URL for the resource
@@ -114,6 +146,20 @@ class Resource(Repository):
         Returns:
             boolean -- outcome of PATCH method call to Fedora
         """
+        sparql = NEW_SPARQL.format(
+            name=name,
+            value=value)
+        fedora_result = requests.patch(
+            resource_url,
+            data=sparql,
+            headers={'Content-Type': 'application/sparql-update'})
+        if fedora_result.status_code < 300:
+                
+            self.searcher.__update__(self.uuid, name, value)
+            return True
+        return False  
+           
+        
 
     def __replace_property__(self, resource_url, name, old_value, new_value):
         """Internal method replaces a resource's existing property with a
@@ -129,7 +175,17 @@ class Resource(Repository):
         Returns:
             boolean -- outcome of PATCH method call to Fedora
         """
-        pass
+        sparql = REPLACE_SPARQL.format(
+            url=resource_url,
+            old_value=old_value,
+            new_value=new_value)
+        fedora_result = requests.patch(
+             resource_url, 
+             data=sparql, 
+             headers={'Content-Type': 'application/sparql-update'})
+        if fedora_result.status_code < 300:
+             return True
+        return False  
 
     def on_delete(self, req, resp, id):
         """DELETE Method either deletes one or more predicate and objects from a
@@ -194,7 +250,6 @@ class Resource(Repository):
         binary = req.get_param('binary') or None
         rdf = req.get_param('rdf') or None
         resource_id = req.get_param('id', None)
-                # Finally, if neither binary or RDF, create a stub Fedora Resource
         if not resource_uri:
             fedora_add_request = urllib.request.Request(
                 post_url,
