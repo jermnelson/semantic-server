@@ -96,16 +96,18 @@ class GraphIngester(object):
 
         Keyword args:
             subject -- rdflib.URIRef
+            graph -- Graph to ingest, default is instance's original graph
             graph_type -- Graph type to dedup
             index -- Elastic search index, defaults to None    
             doc_type -- Elastic search doc type for graph, defaults to None
         """ 
-        subject = kwargs.get('subject') 
-        graph_type = kwargs.get('graph_type')
         doc_type=kwargs.get('doc_type', None)
         index=kwargs.get('index', None)
+        graph = kwargs.get('graph', self.graph)
+        graph_type = kwargs.get('graph_type')
         new_graph = default_graph()
-        for predicate, object_ in self.graph.predicate_objects(
+        subject = kwargs.get('subject') 
+        for predicate, object_ in graph.predicate_objects(
                                       subject=subject):
             if self.dedup_predicates.count(predicate) > 0:
                 exists_url = self.searcher.triplestore.__match__(
@@ -131,7 +133,7 @@ class GraphIngester(object):
             doc_type=doc_type,
             index=index
         )
-        return resource_url, rdflib.Graph().parse(resource_url)
+        return resource_url, default_graph().parse(resource_url)
 
 
     def __clean_up__(self):

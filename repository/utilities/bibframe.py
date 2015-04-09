@@ -81,10 +81,12 @@ class Ingester(GraphIngester):
         if not 'search' in kwargs:
             kwargs['search'] = BIBFRAMESearch(config=kwargs.get('config'))
         super(Ingester, self).__init__(**kwargs)
-        self.base_url = get_base_url(self.graph) 
+        if not 'base_url' in kwargs:
+            self.base_url = get_base_url(self.graph) 
         self.subjects = subjects_list(self.graph, self.base_url)
         self.dedup_predicates.extend([ 
          BF.authorizedAccessPoint, 
+         BF.identifierValue,
          BF.classificationNumber,
          BF.label, 
          BF.titleValue])
@@ -109,6 +111,7 @@ class Ingester(GraphIngester):
             subject = rdflib.URIRef(existing_uri)
         fedora_url, new_graph = self.__add_or_get_graph__(
             subject=subject, 
+            graph=graph,
             graph_type=bf_type,
             doc_type=guess_search_doc_type(graph, subject),
             index='bibframe')

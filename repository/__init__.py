@@ -223,7 +223,9 @@ class Search(object):
         Returns:
 	    string or None
         """
-        if '@value' in value:
+        if [str, float, int, bool].count(type(value)) > 0:
+            return value 
+        elif '@value' in value:
             return value.get('@value')
         elif '@id' in value:
             return value.get('@id')
