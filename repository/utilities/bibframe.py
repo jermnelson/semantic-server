@@ -122,7 +122,7 @@ class Ingester(GraphIngester):
         """Internal method performs update on all subjects of the graph, updating
         all internal subject URIs to their corresponding Fedora 4 URIs. """
         for subject, graph in self.subjects:
-            pass
+            
 
          
 class BIBFRAMESearch(Search):
