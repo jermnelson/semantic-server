@@ -26,6 +26,34 @@ DELETE {{{{
 def serialize(req, resp, resource):
     resp.body = json.dumps(req.context['rdf'])
 
+def replace_property(resource_url, name, old_value, new_value):
+    """Internal method replaces a resource's existing property with a
+    new value.
+
+    Args:
+        resource_url -- Fedora URL for the resource
+        name -- Name of property, should have correct prefix (i.e. bf, 
+	        schema, fedora) 
+        old_value -- Old value of property, must match existing property's
+	        value
+        new_value -- New value of property
+    Returns:
+        boolean -- outcome of PATCH method call to Fedora
+    """
+    sparql = REPLACE_SPARQL.format(
+        url=resource_url,
+        old_value=old_value,
+        new_value=new_value)
+    fedora_result = requests.patch(
+         resource_url, 
+         data=sparql, 
+         headers={'Content-Type': 'application/sparql-update'})
+    if fedora_result.status_code < 300:
+        return True
+    return False  
+
+
+
 class Resource(Repository):
     """Fedora Resource wrapper, see
     https://wiki.duraspace.org/display/FEDORA40/Glossary#Glossary-Resource
@@ -34,7 +62,7 @@ class Resource(Repository):
     >> resource = fedora.Resource()
     """
 
-    def __init__(self, config, searcher=None):
+    def __init__(self, config, searcher=None, url=None):
         super(Resource, self).__init__(config)
         self.rest_url = "http://{}:{}/rest".format(
             self.fedora['host'],
@@ -43,7 +71,12 @@ class Resource(Repository):
             self.searcher = Search(config)
         else:
             self.searcher = searcher
-        self.graph, self.uuid = None, None
+        if url:
+            self.subject = rdflib.URIRef(url)
+            self.graph = default_graph()
+            self.graph.parse(url)
+        else:  
+            self.graph, self.subject, self.uuid = None, None, None
 
     def __create__(self, **kwargs):
         """Internal method takes optional parameters and creates a new
@@ -59,6 +92,13 @@ class Resource(Repository):
             rdf -- RDF graph of new object, defaults to None
             rdf_type -- RDF Type, defaults to text/turtle
         """
+        if self.uuid:
+            description = 
+            raise falcon.HTTPConflict(
+                "Fedora object already exists",
+                """Cannot call Resource.__create__, 
+Fedora object {} already exists""".format(self.uuid))
+
         binary = kwargs.get('binary', None)
         doc_type = kwargs.get('doc_type', None)
         ident = kwargs.get('id', None)
@@ -84,12 +124,13 @@ class Resource(Repository):
              stub_result = requests.post(
                  fedora_post_url)
              resource_url = stub_result.text
-        subject = rdflib.URIRef(resource_url)
-        self.graph = rdflib.Graph().parse(resource_url)
+        self.subject = rdflib.URIRef(resource_url)
+        self.graph = default_graph()
+        self.graph = self.graph.parse(resource_url)
         self.uuid = str(self.graph.value(
                         subject=subject,
                         predicate=FCREPO.uuid))
-        self.searcher.__index__(subject, self.graph, doc_type, index)
+        self.searcher.__index__(self.subject, self.graph, doc_type, index)
         self.searcher.triplestore.__load__(self.graph)
         return resource_url
 
@@ -135,57 +176,58 @@ class Resource(Repository):
                     binary_result.text))
         return "/".join([binary_result.text, "fcr:metadata"])
        
-    def __new_property__(self, resource_url, name, value):
+    def __new_property__(self, name, value):
         """Internal method adds a property to a Fedora Resource
 
         Args:
-            resource_url -- Fedora URL for the resource
             name -- Name of property, should have correct prefix (i.e. bf, 
                     schema, fedora) 
             value -- value of property 
         Returns:
             boolean -- outcome of PATCH method call to Fedora
         """
+        if not self.subject:
+            raise falcon.HTTPServiceUnavailable(
+                "Resource doesn't exist to add property",
+                "Resource doesn't exist add property {} with value {}".format(
+                    name, 
+                    value))
         sparql = NEW_SPARQL.format(
             name=name,
             value=value)
         fedora_result = requests.patch(
-            resource_url,
+            str(self.subject),
             data=sparql,
             headers={'Content-Type': 'application/sparql-update'})
         if fedora_result.status_code < 300:
-                
             self.searcher.__update__(self.uuid, name, value)
             return True
         return False  
            
-        
-
-    def __replace_property__(self, resource_url, name, old_value, new_value):
-        """Internal method replaces a resource's existing property with a
-        new value.
+    def __replace_property__(self, name, current, new):
+        """Internal method replaces a property (predicate) of the Fedora 
+        Resource with a new value.
 
         Args:
-            resource_url -- Fedora URL for the resource
-            name -- Name of property, should have correct prefix (i.e. bf, 
-                    schema, fedora) 
-            old_value -- Old value of property, must match existing property's
-                    value
-            new_value -- New value of property
-        Returns:
-            boolean -- outcome of PATCH method call to Fedora
+            name -- Property name, should have correct prefix 
+                   (i.e. bf,  schema, fedora) 
+            current -- current value of property 
+            new -- new value of property
         """
-        sparql = REPLACE_SPARQL.format(
-            url=resource_url,
-            old_value=old_value,
-            new_value=new_value)
-        fedora_result = requests.patch(
-             resource_url, 
-             data=sparql, 
-             headers={'Content-Type': 'application/sparql-update'})
-        if fedora_result.status_code < 300:
-             return True
-        return False  
+        if not self.subject:
+            description = """Resource doesn't exist to replace property {} with 
+current value of {} with new value of {}""".format(
+                    name,
+                    current, 
+                    new))
+            raise falcon.HTTPServiceUnavailable(
+                "Resource doesn't exist to replace property",
+                description)
+        if replace_replace_property(str(self.subject), name, current, new):
+            self.searcher.__update__(self.subject, name, current, new)
+            
+
+
 
     def on_delete(self, req, resp, id):
         """DELETE Method either deletes one or more predicate and objects from a

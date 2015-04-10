@@ -306,8 +306,8 @@ class Search(object):
             self.body[key] = [self.__get_id_or_value__(value),]
 
     def __update__(self, **kwargs):
-        """Helper method updates a stored document in Elastic Search. Method
-        must either doc_id but not both.
+        """Helper method updates a stored document in Elastic Search and Fuseki. 
+        Method must have doc_id 
 
         Keyword args:
             doc_id -- Elastic search document ID
@@ -336,7 +336,10 @@ class Search(object):
             index=index,
             doc_type=doc_type,
             id=doc_id,
-            body={field: self.__get_id_or_value__(value)})         
+            body={field: self.__get_id_or_value__(value)})
+        result = self.triplestore.__get_subject__(uuid=doc_id)
+        if len(result) == 1:
+            self.triplestore.__update__(result[0]['value'], field, value)         
             
 
     def on_get(self, req, resp):

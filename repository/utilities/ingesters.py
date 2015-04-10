@@ -140,11 +140,17 @@ class GraphIngester(object):
         """Internal method performs update on all subjects of the graph, updating
         all internal subject URIs to their corresponding Fedora 4 URIs. The last
         subject graphs processed should have correct references, earlier ones may
-        not. This method should be overridden by child classes"""
-        pass
+        not. This method may be overridden by child classes"""
+        for subject, graph in self.subjects:
+            local_url = str(subject)
+            fedora_url = self.searcher.triplestore.__sameAs__(local_url)
+            resource = fedora.Resource(config=self.config, self.searcher, fedora_url)
+            for row in self.searcher.triplestore.__get_fedora_local__(local_url):
+                predicate = row['predicate']['value']
+                resource.__replace_property__(predicate, local_url, fedora_url)
 
-        
-    def __get_types__(self, subject, startstr, prefix):
+
+   def __get_types__(self, subject, startstr, prefix):
         types = []
         for rdf_type in self.graph.objects(
             subject=subject,

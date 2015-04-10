@@ -5,10 +5,11 @@ import json
 import rdflib
 import re
 import requests
+from ..utilities.namespaces import *
 
-PREFIX = """PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>"""
+PREFIX = """PREFIX owl: <{}>
+PREFIX rdf: <{}>
+PREFIX xsd: <{}>""".format(OWL, RDF, XSD)
 
 DEDUP_SPARQL = """{}
 SELECT ?subject
@@ -17,11 +18,32 @@ WHERE {{{{
     ?subject rdf:type <{{}}> .
 }}}}""".format(PREFIX)
 
+
+LOCAL_SUBJECT_PREDICATES_SPARQL = """{}
+SELECT DISTINCT *
+WHERE {{{{
+  ?subject ?predicate <{{0}}> .
+  FILTER NOT EXISTS {{{{ ?subject owl:sameAs <{{0}}> }}}}
+
+}}}}""".format(PREFIX)
+
+REPLACE_OBJECT_SPARQL = """{}
+DELETE {{{{
+    <{{0}}> {{1}}} {{2}} .
+}}}}
+INSERT {{{{
+    <{{0}}> {{1}}} {{{3}}} 
+}}}}
+WHERE {{{{
+}}}}""".format(PREFIX)
+
+
 SAME_AS_SPARQL = """{}
 SELECT DISTINCT ?subject
 WHERE {{{{
   ?subject owl:sameAs {{}} .
 }}}}""".format(PREFIX)
+
 
 UPDATE_TRIPLESTORE_SPARQL = """{}
 INSERT DATA {{{{
@@ -39,14 +61,87 @@ URL_CHECK_RE = re.compile(
 
 
 class TripleStore(object):
+    """Implements a Fuseki Triplestore REST API and Management Functions 
+    for the semantic server.
 
-    def __init__(self, config):
-        url = "http://{}:{}".format(
+    >> import fuseki
+    >> triplestore = fuseki.TripleStore(config)
+    
+    """
+
+    def __init__(self, config={}):
+        """Initialize a Fuseki TripleStore class 
+
+        Args:
+            config -- dictionary or loaded configparser
+        """
+        if not "FUSEKI" in config:
+            url = "http://localhost:3030"
+            datastore = 'ds'
+        else: 
+            url = "http://{}:{}".format(
                 config["FUSEKI"]["host"],
                 config["FUSEKI"]["port"])
-        datastore = config["FUSEKI"]["datastore"]
+            datastore = config["FUSEKI"]["datastore"]
         self.update_url = "/".join([url, datastore, "update"])
         self.query_url = "/".join([url, datastore, "query"])
+
+
+    def __get_fedora_local__(self, local_url):
+        """Internal method takes a local url and returns all of its 
+        subject, object references in the triple-store
+
+        Args:
+            local_url -- Local URL 
+        Returns:
+            List of dicts with Fedora URL and predicate
+        """
+        result = requests.post(
+            self.query_url,
+            data={"query": LOCAL_SUBJECT_PREDICATES_SPARQL.format(local_url),
+                  "output": "json"})
+        if result.status_code < 400:
+            return result.json().get('results').get('bindings')
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to return all Fedora URLs",
+                "Local URL={}\nError: {}".format(
+                    local_url,
+                    result.text))
+                     
+    def __get_subject__(self, **kwargs):
+        """Internal method searches for and returns a unique match 
+        based on what type of search being performed.
+
+        Keyword args:
+           uuid -- Returns subject that matches by Fedora uuid
+        """
+        sparql = None
+        if 'uuid' in kwargs:
+            sparql = """{}
+PREFIX fedora: <http://fedora.info/definitions/v4/repository#> 
+SELECT DISTINCT ?subject
+WHERE {{{{
+    ?subject fedora:uuid "{{}}"^^xsd:string .
+}}}""".format(PREFIX, kwargs.get('uuid'))
+        if sparql is None:
+            raise falcon.falcon.HTTPNotAcceptable(
+                "Failed to get subject",
+                "Missing SPARQL") 
+        result = requests.post(
+            self.query_url,
+            data={"query":  sparql,
+                  "output": "json"})
+        if result.status_code < 400:
+            return result.json().get('results').get('bindings')
+        else:
+            description = "Subject keys and values:"
+            for key, value in kwargs.items():
+                description += "\n{}={}".format(key, value)
+            raise falcon.HTTPInternalServerError(
+                "Failed to get subject",
+                description)
+        
 
     def __match__(self, **kwargs):
         """Internal method attempts to match an existing subject
@@ -82,7 +177,17 @@ class TripleStore(object):
                     type_,
                     result.text))
 
+#    def __replace_all__(self, **kwargs):
+#        """Internal Method replaces all occurrences in t
+
     def __load__(self, rdf):
+        """Internal Method loads a RDF graph into Fuseki
+
+        Args:
+            rdf -- rdflib.Graph
+        Raises:
+            falcon.HTTPInternalServerError
+        """
         fuseki_result = requests.post(self.update_url,
             data={"update": UPDATE_TRIPLESTORE_SPARQL.format(
                              rdf.serialize(format='nt').decode())})
@@ -92,6 +197,9 @@ class TripleStore(object):
                 "Error:\n{}\nRDF:\n{}".format(
                     fuseki_result.text,
                     rdf))
+
+
+
 
     def __sameAs__(self, url):
         """Internal method takes a url and attempts to retrieve any existing
@@ -116,7 +224,25 @@ class TripleStore(object):
              raise falcon.HTTPInternalServerError(
                 "Failed to run sameAs query in Fuseki",
                 "URL={}\nError {}:\n{}".format(url, result.status_code, result.text))
-       
+
+    def __update_triple__(self, subject, predicate, object_):
+        """Internal method updates a subject, predicate, and object in Fuseki
+
+        Args:
+            subject -- Subject URL
+            predicate -- Predicate URL or use prefix notation
+            object_ -- Literal, URL, or URL with prefix
+        """
+        
+
+    def on_patch(self, req, resp):
+        "PATCH method takes updates Fuseki with SPARQL as a request parameter
+
+         Args:
+            req -- HTTP Request
+            resp -- HTTP Response
+        """       
+        resp.status = falcon.HTTP_200         
 
     def on_put(self, req, resp):
         rdf = req.get_param('rdf') or None
@@ -125,6 +251,6 @@ class TripleStore(object):
             msg = "Successfully loaded RDF into Fuseki"
         else:
             msg = "No RDF to load into Fuseki"
-        resp.status = falcon.HTTP_200
+        resp.status = falcon.HTTP_201
         resp.body = json.dumps({"message": msg})
 

@@ -26,7 +26,6 @@ from .. import CONTEXT, Search
 from elasticsearch import Elasticsearch
 from .namespaces import *
 
-
 def guess_search_doc_type(graph, fcrepo_uri):
     """Function takes a graph and attempts to guess the Doc type for ingestion
     into Elastic Search
@@ -117,11 +116,6 @@ class Ingester(GraphIngester):
             index='bibframe')
         subject_uri = rdflib.URIRef(fedora_url)
         return subject_uri
-
-    def __clean_up__(self):
-        """Internal method performs update on all subjects of the graph, updating
-        all internal subject URIs to their corresponding Fedora 4 URIs. """
-        for subject, graph in self.subjects:
             
 
          
