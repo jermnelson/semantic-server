@@ -5,7 +5,8 @@ import requests
 import rdflib
 import urllib.request
 import urllib.parse
-from .. import Repository, Search, generate_prefix, ingest_resource, ingest_turtle 
+from .. import Repository, Search, default_graph, generate_prefix  
+from .. import ingest_resource, ingest_turtle
 from ..utilities.namespaces import *
 
 PREFIX = generate_prefix()
@@ -17,9 +18,9 @@ INSERT DATA {{{{
 
 REPLACE_SPARQL = """{}
 DELETE {{{{
-<{{url}}> {{name}} {{old_value}}
+<{{url}}> <{{name}}> <{{old_value}}>
 }}}} INSERT {{{{
-<{{url}}> {{name}} {{new_value}}
+<{{url}}> <{{name}}> <{{new_value}}>
 }}}} WHERE {{{{
 }}}}""".format(PREFIX)
 
@@ -42,6 +43,7 @@ def replace_property(resource_url, name, old_value, new_value):
     """
     sparql = REPLACE_SPARQL.format(
         url=resource_url,
+        name=name,
         old_value=old_value,
         new_value=new_value)
     fedora_result = requests.patch(
@@ -75,6 +77,9 @@ class Resource(Repository):
             self.subject = rdflib.URIRef(url)
             self.graph = default_graph()
             self.graph.parse(url)
+            self.uuid = str(self.graph.value(
+                subject=self.subject, 
+                predicate=FCREPO.uuid))
         else:  
             self.graph, self.subject, self.uuid = None, None, None
 
@@ -93,12 +98,11 @@ class Resource(Repository):
             rdf_type -- RDF Type, defaults to text/turtle
         """
         if self.uuid:
-            description = 
+            description = """Cannot call Resource.__create__, 
+Fedora object {} already exists""".format(self.uuid)
             raise falcon.HTTPConflict(
                 "Fedora object already exists",
-                """Cannot call Resource.__create__, 
-Fedora object {} already exists""".format(self.uuid))
-
+                description)
         binary = kwargs.get('binary', None)
         doc_type = kwargs.get('doc_type', None)
         ident = kwargs.get('id', None)
@@ -128,7 +132,7 @@ Fedora object {} already exists""".format(self.uuid))
         self.graph = default_graph()
         self.graph = self.graph.parse(resource_url)
         self.uuid = str(self.graph.value(
-                        subject=subject,
+                        subject=self.subject,
                         predicate=FCREPO.uuid))
         self.searcher.__index__(self.subject, self.graph, doc_type, index)
         self.searcher.triplestore.__load__(self.graph)
@@ -219,12 +223,14 @@ Fedora object {} already exists""".format(self.uuid))
 current value of {} with new value of {}""".format(
                     name,
                     current, 
-                    new))
+                    new)
             raise falcon.HTTPServiceUnavailable(
                 "Resource doesn't exist to replace property",
                 description)
-        if replace_replace_property(str(self.subject), name, current, new):
-            self.searcher.__update__(self.subject, name, current, new)
+        if replace_property(str(self.subject), name, current, new):
+            self.searcher.__update__(doc_id=self.uuid,
+                                     field=name, 
+                                     value=new)
             
 
 

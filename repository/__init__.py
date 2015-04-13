@@ -85,6 +85,13 @@ def create_sparql_insert_row(predicate, object_):
     statement += ".\n"
     return statement
 
+def default_graph():
+    """Function generates a new rdflib Graph and sets all namespaces as part
+    of the graph's context"""
+    new_graph = rdflib.Graph()
+    for key, value in CONTEXT.items():
+        new_graph.namespace_manager.bind(key, value)
+    return new_graph
 
 def generate_prefix():
     prefix = ''
@@ -323,8 +330,9 @@ class Search(object):
         value = kwargs.get('value')
         if not value:
             raise falcon.HTTPMissingParam("field")
-        for row in self.search_index.indices:
+        for row in self.search_index.indices.stats()['indices'].keys():
             # Doc id should be unique across all indices 
+            print("Index is {} id={}".format(row, doc_id))
             if self.search_index.exists(index=row, id=doc_id): 
                 result = self.search_index.get(index=row, id=doc_id)
                 doc_type = result['_type']
@@ -336,7 +344,9 @@ class Search(object):
             index=index,
             doc_type=doc_type,
             id=doc_id,
-            body={field: self.__get_id_or_value__(value)})
+            body={"doc": {
+                field: self.__get_id_or_value__(value)
+            }})
         result = self.triplestore.__get_subject__(uuid=doc_id)
         if len(result) == 1:
             self.triplestore.__update__(result[0]['value'], field, value)         

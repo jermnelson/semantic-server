@@ -29,10 +29,10 @@ WHERE {{{{
 
 REPLACE_OBJECT_SPARQL = """{}
 DELETE {{{{
-    <{{0}}> {{1}}} {{2}} .
+    <{{0}}> {{1}} {{2}} .
 }}}}
 INSERT {{{{
-    <{{0}}> {{1}}} {{{3}}} 
+    <{{0}}> {{1}} {{3}} 
 }}}}
 WHERE {{{{
 }}}}""".format(PREFIX)
@@ -49,6 +49,9 @@ UPDATE_TRIPLESTORE_SPARQL = """{}
 INSERT DATA {{{{
    {{}}
 }}}}""".format(PREFIX)
+
+PREFIX_CHECK_RE = re.compile(r'\w+[:][a-zA-Z]')
+
 
 URL_CHECK_RE = re.compile(
     r'^(?:http|ftp)s?://' # http:// or https://
@@ -122,8 +125,8 @@ class TripleStore(object):
 PREFIX fedora: <http://fedora.info/definitions/v4/repository#> 
 SELECT DISTINCT ?subject
 WHERE {{{{
-    ?subject fedora:uuid "{{}}"^^xsd:string .
-}}}""".format(PREFIX, kwargs.get('uuid'))
+    ?subject fedora:uuid "{}"^^xsd:string .
+}}}}""".format(PREFIX, kwargs.get('uuid'))
         if sparql is None:
             raise falcon.falcon.HTTPNotAcceptable(
                 "Failed to get subject",
@@ -233,10 +236,34 @@ WHERE {{{{
             predicate -- Predicate URL or use prefix notation
             object_ -- Literal, URL, or URL with prefix
         """
-        
-
+        insert_str = '<{}>'.format(subject)
+        if PREFIX_CHECK_RE.search(predicate):
+            insert_str += " {} ".format(predicate)
+        elif URL_CHECK_RE.search(predicate):
+            insert_str += " <{}> ".format(predicate)
+        else:
+            insert_str += ' "{}" '.format(predicate)
+        if URL_CHECK_RE.seach(object_):
+            insert_str += ' <{}> '.format(object_)
+        elif PREFIX_CHECK_RE.search(object_):
+            insert_str += ' {} '.format(object_)
+        else:
+            insert_str += ' "{}" '.format(object_)
+        sparql = UPDATE_TRIPLESTORE_SPARQL.format(insert_str)
+        result = requests.post(
+            self.update_url,
+            data={"sparql": sparql, "output": "json"})
+        if result.status_code < 400:
+            raise falcon.HTTPInternalServerError(
+                "Failed to update triple",
+                "Failed to update {} {} {} to Fuseki.\nError={}".format(
+                    subject,
+                    predicate,
+                    object_,
+                    result.text))
+   
     def on_patch(self, req, resp):
-        "PATCH method takes updates Fuseki with SPARQL as a request parameter
+        """PATCH method takes updates Fuseki with SPARQL as a request parameter
 
          Args:
             req -- HTTP Request

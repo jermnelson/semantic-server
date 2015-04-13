@@ -7,18 +7,11 @@ import sys
 import urllib.parse
 
 from elasticsearch import Elasticsearch
-from .. import CONTEXT, INDEXING, RDF, Search
-from ..resources import fedora
+from .. import CONTEXT, INDEXING, RDF, Search, default_graph
+from ..resources import fedora, replace_property
 from ..resources.fuseki import TripleStore
 from .namespaces import *
 
-def default_graph():
-    """Function generates a new rdflib Graph and sets all namespaces as part
-    of the graph's context"""
-    new_graph = rdflib.Graph()
-    for key, value in CONTEXT.items():
-        new_graph.namespace_manager.bind(key, value)
-    return new_graph
 
 def valid_uri(uri):
     """function takes a rdflib.URIRef and checks if it is valid for 
@@ -144,13 +137,12 @@ class GraphIngester(object):
         for subject, graph in self.subjects:
             local_url = str(subject)
             fedora_url = self.searcher.triplestore.__sameAs__(local_url)
-            resource = fedora.Resource(config=self.config, self.searcher, fedora_url)
+            resource = fedora.Resource(self.config, self.searcher, fedora_url)
             for row in self.searcher.triplestore.__get_fedora_local__(local_url):
                 predicate = row['predicate']['value']
                 resource.__replace_property__(predicate, local_url, fedora_url)
 
-
-   def __get_types__(self, subject, startstr, prefix):
+    def __get_types__(self, subject, startstr, prefix):
         types = []
         for rdf_type in self.graph.objects(
             subject=subject,

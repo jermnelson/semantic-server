@@ -123,9 +123,11 @@ class BIBFRAMESearch(Search):
     SUGGESTION_TYPES = [
         BF.Work, 
         BF.Instance, 
+        BF.Person,
         BF.Place, 
         BF.Organization, 
-        BF.Title]
+        BF.Title,
+        BF.Topic]
 
     def __init__(self, **kwargs):
         super(BIBFRAMESearch, self).__init__(**kwargs)
@@ -148,9 +150,21 @@ class BIBFRAMESearch(Search):
                 add_suggestion = True
                 break
         if add_suggestion:
+            input_ = [str(obj) for obj in graph.objects(
+                         subject=subject, 
+                         predicate=BF.label)]
+            for predicate in [BF.authorizedAccessPoint, 
+                              BF.title,
+                              BF.titleStatement,
+                              BF.titleValue]:
+                for obj in graph.objects(subject=subject, predicate=predicate):
+                    if type(obj) == rdflib.Literal:
+                        input_.append(obj)
+                    
+                 
             self.body['suggest'] = {
-                "input": [],
-                "output": "",
+                "input": input_,
+                "output": ' '.join(input_),
                 "payload": {"id": doc_id}}
 
                                 
