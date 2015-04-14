@@ -332,7 +332,6 @@ class Search(object):
             raise falcon.HTTPMissingParam("field")
         for row in self.search_index.indices.stats()['indices'].keys():
             # Doc id should be unique across all indices 
-            print("Index is {} id={}".format(row, doc_id))
             if self.search_index.exists(index=row, id=doc_id): 
                 result = self.search_index.get(index=row, id=doc_id)
                 doc_type = result['_type']

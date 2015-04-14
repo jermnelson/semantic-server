@@ -8,7 +8,7 @@ import urllib.parse
 
 from elasticsearch import Elasticsearch
 from .. import CONTEXT, INDEXING, RDF, Search, default_graph
-from ..resources import fedora, replace_property
+from ..resources import fedora
 from ..resources.fuseki import TripleStore
 from .namespaces import *
 
