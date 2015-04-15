@@ -137,10 +137,11 @@ class GraphIngester(object):
         for subject, graph in self.subjects:
             local_url = str(subject)
             fedora_url = self.searcher.triplestore.__sameAs__(local_url)
-            resource = fedora.Resource(self.config, self.searcher, fedora_url)
             for row in self.searcher.triplestore.__get_fedora_local__(local_url):
                 predicate = row['predicate']['value']
-                resource.__replace_property__(predicate, local_url, fedora_url)
+                subject = row['subject']['value']
+                result = fedora.replace_property(subject, predicate, local_url, fedora_url)
+                
 
     def __get_types__(self, subject, startstr, prefix):
         types = []
