@@ -94,6 +94,7 @@ class Resource(Repository):
             doc_type -- Elastic search document type, defaults to None
 	    id -- Existing identifier defaults to None
             index -- Elastic search index, defaults to None
+            mimetype -- Mimetype for binary stream, defaults to application/octet-stream
             rdf -- RDF graph of new object, defaults to None
             rdf_type -- RDF Type, defaults to text/turtle
         """
@@ -107,6 +108,7 @@ Fedora object {} already exists""".format(self.uuid)
         doc_type = kwargs.get('doc_type', None)
         ident = kwargs.get('id', None)
         index = kwargs.get('index', None)
+        mimetype = kwargs.get('mimetype', 'application/octet-stream')
         rdf = kwargs.get('rdf', None)
         rdf_type = kwargs.get('rdf_type', 'text/turtle') 
         resource_url = None
@@ -116,7 +118,7 @@ Fedora object {} already exists""".format(self.uuid)
             fedora_post_url = self.rest_url
         # First check and add binary datastream
         if binary:
-            resource_url = self.__new_binary__(fedora_post_url, binary)
+            resource_url = self.__new_binary__(fedora_post_url, binary, mimetype)
         # Next handle any attached RDF
         if rdf:
             resource_url = self.__new_by_rdf__(
@@ -158,7 +160,7 @@ Fedora object {} already exists""".format(self.uuid)
         return rdf_result.text
 
 
-    def __new_binary__(self, post_url, binary):
+    def __new_binary__(self, post_url, binary, mimetype):
         """Internal method takes a Fedora POST url and a binary file to 
         create a Fedora Object and returns the fcr:metadata URL for 
         adding the binary's associated metadata.
@@ -166,19 +168,23 @@ Fedora object {} already exists""".format(self.uuid)
         Args:
             post_url -- Fedora POST url
             binary -- binary datastream
+            mimetype -- datastream's mimetype
         Returns:
             new url for binary datastream's metadata
         """
-        binary_result = requests.post(
-            fedora_post_url,
-            data=binary)
-        if binary_result.status_code > 399:
+        # Using urllib.request for binary upload
+        binary_request = urllib.request.Request(
+            post_url,
+            data=binary,
+            headers={"Content-Type": mimetype})
+        binary_result = urllib.request.urlopen(binary_request)
+        if binary_result.status > 399:
             raise falcon.HTTPInternalServerError(
                 "Error adding binary to {}".format(post_url),
                 "Error adding binary file {},error:\n{}".format(
                     post_url,
-                    binary_result.text))
-        return "/".join([binary_result.text, "fcr:metadata"])
+                    binary_result.read()))
+        return "/".join([binary_result.read().decode(), "fcr:metadata"])
        
     def __new_property__(self, name, value):
         """Internal method adds a property to a Fedora Resource

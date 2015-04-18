@@ -119,8 +119,7 @@ def ingest_resource(req, resp, resource):
 
 def ingest_turtle(graph):
     subject = next(graph.subjects(predicate=rdflib.RDF.type))
-    raw_turtle = graph.serialize(format='turtle')
-    raw_turtle = raw_turtle.decode()
+    raw_turtle = graph.serialize(format='turtle').decode()
     turtle = raw_turtle.replace("<{}>".format(subject), "<>")
     turtle = turtle[:-3]
     turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)

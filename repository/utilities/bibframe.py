@@ -23,8 +23,10 @@ import urllib.parse
 import urllib.request
 from .ingesters import default_graph, GraphIngester, subjects_list
 from .. import CONTEXT, Search
+from ..resources.fedora import Resource
 from elasticsearch import Elasticsearch
 from .namespaces import *
+from .cover_art import by_isbn
 
 def guess_search_doc_type(graph, fcrepo_uri):
     """Function takes a graph and attempts to guess the Doc type for ingestion
@@ -101,6 +103,35 @@ class Ingester(GraphIngester):
         """Helper method is intended to be overridden by Ingester children"""
         pass
 
+    def __add_cover_art__(self, row):
+        """Internal method attempts to retrieves cover art image for the 
+        instance from one or more web services. If successful, adds new
+        CoverArt resource to datastore.
+
+        Args:
+          row -- instance, graph tuple
+        """ 
+        cover_json = None
+        instance, graph = row
+        # First test for bf:isbn10, bf:isbn12, and finally with general bf:isbn
+        for predicate in [BF.isbn10, BF.isbn13, BF.isbn]: 
+            isbn = graph.value(subject=instance, predicate=predicate)
+            if isbn:
+                value = str(isbn).split("/")[-1]
+                cover_json = by_isbn(value)
+                break
+        if cover_json:
+            if "bf:annotationBody" in cover_json:
+                raw_image = cover_json.pop("bf:annotationBody")[0]['@value']
+            cover_json['bf:coverArtFor'] = [{"@value": str(instance)}]
+            cover_art_graph = default_graph()
+            cover_art = Resource(self.config, self.searcher)
+            # Currently default mimetype for these covers is image/jpeg
+            cover_art_url = cover_art.__create__(
+                rdf=cover_art_graph, 
+                binary=raw_image, 
+                mimetype='image/jpeg')
+            
  
     def __process_subject__(self, row):
         subject, graph = row

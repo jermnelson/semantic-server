@@ -201,7 +201,41 @@ WHERE {{{{
                     fuseki_result.text,
                     rdf))
 
+    def __replace_object__(self, subject, predicate, old_object, new_object):
+        """Internal method attempts to replace an existing triple's object with
+        a new object
 
+        Args:
+           subject -- rdflib.URIRef
+           predicate -- rdflib.URIRef
+           old_object -- rdflib.URIRef or rdflib.Literal
+           new_object -- rdflib.URIRef or rdflib.Literal
+        """
+        def get_string_rep(object_):
+            if type(object_) == rdflib.URIRef:
+                return '<{}>'.format(object_)
+            elif type(old_object) == rdflib.Literal:
+                return '"{}"'.format(object_)
+        sparql = REPLACE_OBJECT_SPARQL.format(
+            subject,
+            get_string_rep(predicate),
+            get_string_rep(old_object),
+            get_string_rep(new_object))
+        result = requests.post(
+            self.update_url,
+            data={"update": sparql, "output": "json"})
+        if result.status_code < 400:
+            return True
+        else:
+            print("SPARQL is {}".format(sparql))
+            raise falcon.HTTPInternalServerError(
+                "Failed to replace triple's object",
+                "Error:\n{}\nSubject:{}\tPredicate:{}\tOld Obj:{}\tNew Obj:{}".format(
+                    result.text,
+                    subject,
+                    predicate,
+                    old_object,
+                    new_object))
 
 
     def __sameAs__(self, url):
