@@ -136,7 +136,8 @@ Fedora object {} already exists""".format(self.uuid)
         self.uuid = str(self.graph.value(
                         subject=self.subject,
                         predicate=FCREPO.uuid))
-        self.searcher.__index__(self.subject, self.graph, doc_type, index)
+        if index:
+            self.searcher.__index__(self.subject, self.graph, doc_type, index)
         self.searcher.triplestore.__load__(self.graph)
         return resource_url
 

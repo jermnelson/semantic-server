@@ -39,7 +39,7 @@ def guess_search_doc_type(graph, fcrepo_uri):
     Returns:
         string: Doc type of subject
     """
-    doc_type = 'Resource'
+    doc_type = None
     subject_types = [
         obj for obj in graph.objects(
             subject=fcrepo_uri,
@@ -60,6 +60,11 @@ def guess_search_doc_type(graph, fcrepo_uri):
     ]:
         if getattr(BF, class_name) in subject_types:
             doc_type = class_name
+            break
+    if MADS.Authority in subject_types:
+        doc_type = 'Authority'
+    if not doc_type:
+        doc_type = 'Resource'
     return doc_type
 
 def get_base_url(graph):
@@ -112,7 +117,7 @@ class Ingester(GraphIngester):
           row -- instance, graph tuple
         """ 
         cover_json = None
-        instance, graph = row
+        instance, graph = row[0], row[1]
         # First test for bf:isbn10, bf:isbn12, and finally with general bf:isbn
         for predicate in [BF.isbn10, BF.isbn13, BF.isbn]: 
             isbn = graph.value(subject=instance, predicate=predicate)
@@ -123,6 +128,8 @@ class Ingester(GraphIngester):
         if cover_json:
             if "bf:annotationBody" in cover_json:
                 raw_image = cover_json.pop("bf:annotationBody")[0]['@value']
+            if not "rdf:type" in cover_json:
+                cover_json["rdf:type"] = BF.CoverArt
             cover_json['bf:coverArtFor'] = [{"@value": str(instance)}]
             cover_art_graph = default_graph()
             cover_art = Resource(self.config, self.searcher)
@@ -134,20 +141,38 @@ class Ingester(GraphIngester):
             
  
     def __process_subject__(self, row):
-        subject, graph = row
+        subject, graph = row[0], row[1]
         bf_type = self.__get_specific_type__(subject)
         existing_uri = self.searcher.triplestore.__sameAs__(str(subject))
         if existing_uri:
             subject = rdflib.URIRef(existing_uri)
+        
         fedora_url, new_graph = self.__add_or_get_graph__(
             subject=subject, 
             graph=graph,
-            graph_type=bf_type,
-            doc_type=guess_search_doc_type(graph, subject),
-            index='bibframe')
+            graph_type=bf_type)#,
+            #doc_type=guess_search_doc_type(graph, subject),
+            #index='bibframe')
         subject_uri = rdflib.URIRef(fedora_url)
         return subject_uri
-            
+
+    def __clean_up__(self):
+        super(Ingester, self).__clean_up__()
+        # Index into Elastic Search only after clean-up
+        for row in self.subjects:
+            subject = row[0]
+            fedora_url = self.searcher.triplestore.__sameAs__(str(subject))
+            fedora_uri = rdflib.URIRef(fedora_url)
+            graph = default_graph()
+            graph.parse(fedora_url)
+            doc_type = guess_search_doc_type(graph, fedora_uri) 
+            self.searcher.__index__(
+                fedora_uri,
+                graph, 
+                doc_type, 
+                'bibframe')
+
+                    
 
          
 class BIBFRAMESearch(Search):

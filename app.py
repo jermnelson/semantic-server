@@ -6,10 +6,11 @@ Datastore Project (https://github.com/jermnelson/BIBFRAME-Datastore).
 """
 __author__ = "Jeremy Nelson"
 
-import os
 import configparser
 import falcon
 import json
+import logging
+import os
 
 CURRENT_DIR = os.path.dirname(__file__)
 BASE_DIR = os.path.dirname(CURRENT_DIR)
@@ -126,6 +127,9 @@ if 'ISLANDORA' in config:
 def main():
     "Simple main function runs wsgi container"
     debug = config.getboolean('REST_API', 'debug') or False
+    logging.basicConfig(
+        filename= config.get('LOGGING', 'filename'),
+        level=int(config.get('LOGGING', 'level')))
     run_simple(
         config.get('REST_API', 'host'),
         config.getint('REST_API', 'port'),

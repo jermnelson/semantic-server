@@ -2,6 +2,7 @@ __author__ = "Jeremy Nelson"
 
 import datetime
 import falcon
+import logging
 import rdflib
 import sys
 import urllib.parse
@@ -62,7 +63,7 @@ def subjects_list(graph, base_url):
             subject_graph.add((subject, p, o))
         # Add a new indexing type
         subject_graph.add((subject, RDF.type, INDEXING.Indexable))
-        subject_graphs.append((subject, subject_graph))
+        subject_graphs.append([subject, subject_graph, False])
     return subject_graphs
 
 
@@ -110,15 +111,16 @@ class GraphIngester(object):
                         object=str(object_))
                 if exists_url:
                     return exists_url, rdflib.Graph().parse(exists_url)
-            existing_obj_url = self.searcher.triplestore.__sameAs__(object_)
-            if existing_obj_url:
-                new_graph.add((subject, 
-                               predicate, 
-                               rdflib.URIRef(existing_obj_url))) 
-            else:
-                new_graph.add((subject, 
-                               predicate, 
-                               object_))
+            if type(object_) == rdflib.URIRef:
+                existing_obj_url = self.searcher.triplestore.__sameAs__(object_)
+                if existing_obj_url:
+                    new_graph.add((subject, 
+                                   predicate, 
+                                   rdflib.URIRef(existing_obj_url))) 
+                    continue
+            new_graph.add((subject, 
+                           predicate, 
+                           object_))
         resource = fedora.Resource(self.config, self.searcher)
         resource_url = resource.__create__(
             rdf=new_graph, 
@@ -134,7 +136,9 @@ class GraphIngester(object):
         all internal subject URIs to their corresponding Fedora 4 URIs. The last
         subject graphs processed should have correct references, earlier ones may
         not. This method may be overridden by child classes"""
-        for subject, graph in self.subjects:
+        for subject, graph, ingested in self.subjects:
+            if ingested is False:
+                continue
             local_url = str(subject)
             fedora_url = self.searcher.triplestore.__sameAs__(local_url)
             for row in self.searcher.triplestore.__get_fedora_local__(local_url):
@@ -179,20 +183,26 @@ class GraphIngester(object):
         if not quiet:
             print("Started ingesting at {} {}".format(start, len(self.subjects)))
         for i, row in enumerate(self.subjects):
-            subject, graph = row
+            subject, graph = row[0], row[1]
             if not i%10 and i > 0 and not quiet:
 
                 print(".", end="")
             if not i%25 and not quiet:
                 print(i, end="")
-            #try:
-            self.__process_subject__(row)
-            #except:
-            #    print("Error with {}, subject={}".format(i, subject))
-            #    print(sys.exc_info()[0])
-            #    break
+            try:
+               self.__process_subject__(row)
+               row[2] = True
+
+            except:
+                logging.error("Error with {}, subject={}\n\t{}".format(
+                    i, 
+                    subject,
+                    sys.exc_info()[0:2]))
+                break
         self.__clean_up__()
         end = datetime.datetime.utcnow()
+        if not i:
+            i = 1
         avg_sec = (end-start).seconds / i
         if not quiet:
             print("Finished at {}, total subjects {}, Average per min {}".format(

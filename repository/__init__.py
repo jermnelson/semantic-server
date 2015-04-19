@@ -289,6 +289,8 @@ class Search(object):
                      subject=subject,
                      predicate=FCREPO.uuid))
         self.__generate_suggestion__(subject, graph, doc_id)
+        print("Attempting to index {} with id={}".format(
+        subject, doc_id))
         self.search_index.index(
             index=index,
             doc_type=doc_type,
