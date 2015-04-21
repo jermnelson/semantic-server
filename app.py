@@ -21,6 +21,7 @@ try:
     from .repository import Info, Search
     from .repository.resources.fedora import Resource, Transaction
     from .repository.resources.fedora3 import FedoraObject
+    from .repository.resources.fuseki import TripleStore
     from .repository.resources.islandora import IslandoraDatastream
     from .repository.resources.islandora import IslandoraObject
     from .repository.resources.islandora import IslandoraRelationship
@@ -30,6 +31,7 @@ except (SystemError, ImportError):
     from repository import Info, Search
     from repository.resources.fedora import Resource, Transaction
     from repository.resources.fedora3 import FedoraObject
+    from repository.resources.fuseki import TripleStore
     from repository.resources.islandora import IslandoraDatastream
     from repository.resources.islandora import IslandoraObject
     from repository.resources.islandora import IslandoraRelationship
@@ -107,6 +109,9 @@ if 'FEDORA' in config:
 if 'FEDORA3' in config:
     api.add_route("/migrate/foxml", FoxmlContentHandler(config))
     api.add_route("/Object/{pid}", FedoraObject(config))
+
+if 'FUSEKI' in config: 
+    api.add_route("/triplestore/", TripleStore(config))
 
 if 'ISLANDORA' in config:
     islandora_object = IslandoraObject(config)

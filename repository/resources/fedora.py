@@ -6,7 +6,7 @@ import rdflib
 import urllib.request
 import urllib.parse
 from .. import Repository, Search, default_graph, generate_prefix  
-from .. import ingest_resource, ingest_turtle
+from .. import create_sparql_insert_row, ingest_resource, ingest_turtle
 from ..utilities.namespaces import *
 
 PREFIX = generate_prefix()
@@ -118,9 +118,13 @@ Fedora object {} already exists""".format(self.uuid)
             fedora_post_url = self.rest_url
         # First check and add binary datastream
         if binary:
-            resource_url = self.__new_binary__(fedora_post_url, binary, mimetype)
+            resource_url = self.__new_binary__(
+                fedora_post_url, 
+                binary, 
+                mimetype,
+                rdf)
         # Next handle any attached RDF
-        if rdf:
+        if rdf and not binary:
             resource_url = self.__new_by_rdf__(
                 fedora_post_url, 
                 rdf, 
@@ -161,7 +165,7 @@ Fedora object {} already exists""".format(self.uuid)
         return rdf_result.text
 
 
-    def __new_binary__(self, post_url, binary, mimetype):
+    def __new_binary__(self, post_url, binary, mimetype, rdf=None):
         """Internal method takes a Fedora POST url and a binary file to 
         create a Fedora Object and returns the fcr:metadata URL for 
         adding the binary's associated metadata.
@@ -170,6 +174,7 @@ Fedora object {} already exists""".format(self.uuid)
             post_url -- Fedora POST url
             binary -- binary datastream
             mimetype -- datastream's mimetype
+            rdf -- Attached RDF metadata for binary, default is None
         Returns:
             new url for binary datastream's metadata
         """
@@ -185,7 +190,25 @@ Fedora object {} already exists""".format(self.uuid)
                 "Error adding binary file {},error:\n{}".format(
                     post_url,
                     binary_result.read()))
-        return "/".join([binary_result.read().decode(), "fcr:metadata"])
+        metadata_url = "/".join([binary_result.read().decode(), "fcr:metadata"])
+        if rdf:
+            metadata_uri = rdflib.URIRef(metadata_url)
+            metadata_rdf = default_graph()
+            metadata_rdf.parse(metadata_url)
+            for p, o in rdf.predicate_objects():
+                metadata_rdf.add((metadata_uri, p, o))
+            rdf_put_result = requests.put(
+                metadata_url,
+                data=metadata_rdf.serialize(format='turtle'),
+                headers={"Content-Type": "text/turtle"})
+            if rdf_put_result.status_code > 399:
+                raise falcon.HTTPInternalServerError(
+                     "Error adding rdf to {}".format(post_url),
+                     "Error adding rdf file {},error:\n{}".format(
+                        metadata_url,
+                        rdf_put_result.text))
+        return metadata_url
+    
        
     def __new_property__(self, name, value):
         """Internal method adds a property to a Fedora Resource

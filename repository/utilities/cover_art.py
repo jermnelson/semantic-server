@@ -27,13 +27,14 @@ def google_books_cover(isbn):
         if result_json['totalItems'] < 1:
             return
         first_hit = result.json()['items'][0]
+        if not 'imageLinks' in first_hit['volumeInfo']:
+            return
         thumbnail_url = first_hit['volumeInfo']['imageLinks']['thumbnail']
         thumbnail_result = requests.get(thumbnail_url)
         if thumbnail_result.status_code < 400:
-            return {"bf:annotationSource": [{"@type": "bf:Organization", 
-                                             "bf:label": [{"@value":"Google"}]}],
+            return {
                     "bf:annotationBody": [{"@value":thumbnail_result.content}],
-                    "schema:isBasedOnUrl": [{"@value": google_url.format(isbn)}]}
+                    "schema:isBasedOnUrl": [{"@id": google_url.format(isbn)}]}
 
 def openlibrary_books_cover(**kwargs):
     """Function takes ether an isbn, oclc number, or Library of Congress number

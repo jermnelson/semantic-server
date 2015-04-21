@@ -125,7 +125,7 @@ class TripleStore(object):
 PREFIX fedora: <http://fedora.info/definitions/v4/repository#> 
 SELECT DISTINCT ?subject
 WHERE {{{{
-    ?subject fedora:uuid "{}"^^xsd:string .
+    ?subject fedora:uuid '''{}'''^^xsd:string .
 }}}}""".format(PREFIX, kwargs.get('uuid'))
         if sparql is None:
             raise falcon.falcon.HTTPNotAcceptable(
@@ -227,7 +227,6 @@ WHERE {{{{
         if result.status_code < 400:
             return True
         else:
-            print("SPARQL is {}".format(sparql))
             raise falcon.HTTPInternalServerError(
                 "Failed to replace triple's object",
                 "Error:\n{}\nSubject:{}\tPredicate:{}\tOld Obj:{}\tNew Obj:{}".format(
@@ -295,7 +294,35 @@ WHERE {{{{
                     predicate,
                     object_,
                     result.text))
-   
+
+    def on_get(self, req, resp):
+        """GET method returns information related to the Fuseki Instance
+
+        Args:
+           req -- HTTP Request
+           resp -- HTTP Response
+        """ 
+        resp.status = falcon.HTTP_200
+        resp.body = json.dumps({"message": "Fuseki is active",
+                                "query_url": self.query_url})
+
+    def on_post(self, req, resp):
+        
+        sparql = req.get_param('sparql') or None
+        print("IN FUSEKI POST sparql={} url={}".format(sparql, self.query_url))
+        if sparql is None:
+            raise falcon.HTTPMissingParam('sparql')
+        result = requests.post(
+            self.query_url,
+            data={"query": sparql, "output": "json"})
+        if result.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Fuseki Server Error",
+                result.text)
+        resp.status = falcon.HTTP_200
+        print("Result {}".format(result.json()))
+        resp.body = json.dumps(result.json())
+
     def on_patch(self, req, resp):
         """PATCH method takes updates Fuseki with SPARQL as a request parameter
 
@@ -308,7 +335,7 @@ WHERE {{{{
     def on_put(self, req, resp):
         rdf = req.get_param('rdf') or None
         if rdf:
-            self.__load__(self. rdf)
+            self.__load__(self.rdf)
             msg = "Successfully loaded RDF into Fuseki"
         else:
             msg = "No RDF to load into Fuseki"

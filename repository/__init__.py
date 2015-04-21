@@ -119,10 +119,15 @@ def ingest_resource(req, resp, resource):
 
 def ingest_turtle(graph):
     subject = next(graph.subjects(predicate=rdflib.RDF.type))
-    raw_turtle = graph.serialize(format='turtle').decode()
-    turtle = raw_turtle.replace("<{}>".format(subject), "<>")
-    turtle = turtle[:-3]
-    turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
+    try:
+        raw_turtle = graph.serialize(format='turtle').decode()
+        turtle = raw_turtle.replace("<{}>".format(subject), "<>")
+        turtle = turtle[:-3]
+        turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
+    except:
+        turtle = ""
+        for predicate, object_ in graph.predicate_objects():
+            turtle += create_sparql_insert_row(predicate, object_)
     return turtle
 
 class Info(object):
@@ -289,8 +294,6 @@ class Search(object):
                      subject=subject,
                      predicate=FCREPO.uuid))
         self.__generate_suggestion__(subject, graph, doc_id)
-        print("Attempting to index {} with id={}".format(
-        subject, doc_id))
         self.search_index.index(
             index=index,
             doc_type=doc_type,
@@ -404,14 +407,10 @@ class Search(object):
                 "Failed setting {} to {}".format(
                     predicate,
                     object_))
-                                   
-        
-             
-          
-            
-        
 
-    def url_from_id(self, id):
+    def url_from_id(self, uuid, index):
+        es_result = self.search_index.get(id=uuid, index=index)
+        
         return fedora_url
 
 class Repository(object):

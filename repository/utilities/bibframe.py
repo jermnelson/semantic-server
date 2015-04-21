@@ -129,15 +129,23 @@ class Ingester(GraphIngester):
             if "bf:annotationBody" in cover_json:
                 raw_image = cover_json.pop("bf:annotationBody")[0]['@value']
             if not "rdf:type" in cover_json:
-                cover_json["rdf:type"] = BF.CoverArt
-            cover_json['bf:coverArtFor'] = [{"@value": str(instance)}]
+                cover_json["rdf:type"] = str(BF.CoverArt)
+            cover_json['bf:coverArtFor'] = [
+                {"@id": self.searcher.triplestore.__sameAs__(str(instance))}]
             cover_art_graph = default_graph()
+            cover_art_graph.parse(data=json.dumps(cover_json), 
+                                  format='json-ld',
+                                  context=CONTEXT)
+            graph_ingester = GraphIngester(config=self.config, 
+                                           graph=cover_art_graph,
+                                           base_url=self.base_url)
             cover_art = Resource(self.config, self.searcher)
             # Currently default mimetype for these covers is image/jpeg
             cover_art_url = cover_art.__create__(
                 rdf=cover_art_graph, 
                 binary=raw_image, 
                 mimetype='image/jpeg')
+            
             
  
     def __process_subject__(self, row):
@@ -160,6 +168,8 @@ class Ingester(GraphIngester):
         super(Ingester, self).__clean_up__()
         # Index into Elastic Search only after clean-up
         for row in self.subjects:
+            if row[2] is False:
+                continue
             subject = row[0]
             fedora_url = self.searcher.triplestore.__sameAs__(str(subject))
             fedora_uri = rdflib.URIRef(fedora_url)
@@ -203,6 +213,8 @@ class BIBFRAMESearch(Search):
         for type_of in graph.objects(subject=subject, predicate=RDF.type):
             if BIBFRAMESearch.SUGGESTION_TYPES.count(
                 type_of):
+                name = str(type_of).split("/")[-1].lower()
+                suggest_field = "{}_suggest".format(name)
                 add_suggestion = True
                 break
         if add_suggestion:
@@ -218,7 +230,7 @@ class BIBFRAMESearch(Search):
                         input_.append(obj)
                     
                  
-            self.body['suggest'] = {
+            self.body[suggest_field] = {
                 "input": input_,
                 "output": ' '.join(input_),
                 "payload": {"id": doc_id}}

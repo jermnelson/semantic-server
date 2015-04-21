@@ -190,15 +190,13 @@ class GraphIngester(object):
             if not i%25 and not quiet:
                 print(i, end="")
             try:
-               self.__process_subject__(row)
-               row[2] = True
-
+                self.__process_subject__(row)
+                row[2] = True
             except:
                 logging.error("Error with {}, subject={}\n\t{}".format(
                     i, 
                     subject,
                     sys.exc_info()[0:2]))
-                break
         self.__clean_up__()
         end = datetime.datetime.utcnow()
         if not i:
