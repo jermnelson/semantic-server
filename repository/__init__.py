@@ -239,6 +239,7 @@ class Search(object):
         elif '@value' in value:
             return value.get('@value')
         elif '@id' in value:
+            sparql = 
             return value.get('@id')
             #! Need to query triplestore?
 	    #if uri in self.uris2uuid:

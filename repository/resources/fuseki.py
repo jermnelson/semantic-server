@@ -18,6 +18,11 @@ WHERE {{{{
     ?subject rdf:type <{{}}> .
 }}}}""".format(PREFIX)
 
+GET_ID_SPARQL = """{}
+SELECT ?uuid
+WHERE {{{{
+        ?uuid
+}}}}""".format(PREFIX)
 
 LOCAL_SUBJECT_PREDICATES_SPARQL = """{}
 SELECT DISTINCT *
@@ -89,6 +94,9 @@ class TripleStore(object):
         self.update_url = "/".join([url, datastore, "update"])
         self.query_url = "/".join([url, datastore, "query"])
 
+
+    def __get_id__(self, fedora_url):
+        
 
     def __get_fedora_local__(self, local_url):
         """Internal method takes a local url and returns all of its 
