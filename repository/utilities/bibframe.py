@@ -11,6 +11,7 @@ Licence:     GPLv3
 """
 __author__ = "Jeremy Nelson"
 
+import base64
 import datetime
 import falcon
 import json
@@ -27,6 +28,13 @@ from ..resources.fedora import Resource
 from elasticsearch import Elasticsearch
 from .namespaces import *
 from .cover_art import by_isbn
+
+COVER_ART_SPARQL = """PREFIX bf: <{}>
+PREFIX rdf: <{}>
+SELECT DISTINCT ?cover
+WHERE {{
+  ?cover rdf:type bf:CoverArt .
+}}""".format(BF, RDF)
 
 def guess_search_doc_type(graph, fcrepo_uri):
     """Function takes a graph and attempts to guess the Doc type for ingestion
@@ -72,7 +80,7 @@ def get_base_url(graph):
         sparql = """PREFIX rdf: <{0}>
 PREFIX bf: <{1}>
 SELECT ?subject 
-WHERE {{
+WHERE {{http://bibframe.org/vocab/
     ?subject rdf:type {2} .
 }}""" .format(RDF, BF, name)
         for subject in graph.query(sparql):
@@ -198,6 +206,32 @@ class BIBFRAMESearch(Search):
     def __init__(self, **kwargs):
         super(BIBFRAMESearch, self).__init__(**kwargs)
 
+    def __generate_body__(self, graph, prefix=None):
+        """Internal method overrides default Search body generator to 
+        for additional index processing on specific types.
+
+        Args:
+            graph -- rdflib.Graph of BIBFRAME Resource
+            prefix -- Prefix filter, will only index if object starts with a prefix,
+                      default is None to index everything.
+        """
+        super(BIBFRAMESearch, self).__generate_body__(graph, prefix)
+        # Add coverArt annotationBody as base64 encoded jpg to body 
+        query = graph.query(COVER_ART_SPARQL)
+        if len(query.bindings) > 0:
+             cover_url = query.bindings[0]['?cover']
+             image_url = str(cover_url).split(
+                 "fcr:metadata")[0]
+             image_result = requests.get(image_url)
+             if image_result.status_code < 400:
+                 raw_image = image_result.content
+                 encoded_image = base64.b64encode(raw_image)
+                 if 'bf:coverArt' in self.body:
+                     self.body['bf:coverArt'].append(encoded_image)
+                 else:
+                     self.body['bf:coverArt'] = [encoded_image,]
+                          
+
 
     def __generate_suggestion__(self, subject, graph, doc_id):
         """Internal method generates Elastic Search auto-suggestion
@@ -226,10 +260,10 @@ class BIBFRAMESearch(Search):
                               BF.titleStatement,
                               BF.titleValue]:
                 for obj in graph.objects(subject=subject, predicate=predicate):
-                    if type(obj) == rdflib.Literal:
+                    if type(obj) == rdflib.Literal and obj.datatype == XSD.string:
                         input_.append(obj)
                     
-                 
+            input_ =  list(set(input_))    
             self.body[suggest_field] = {
                 "input": input_,
                 "output": ' '.join(input_),

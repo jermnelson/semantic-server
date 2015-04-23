@@ -10,7 +10,7 @@ from ..utilities.namespaces import *
 PREFIX = """PREFIX fedora: <{}>
 PREFIX owl: <{}>
 PREFIX rdf: <{}>
-PREFIX xsd: <{}>""".format(FCREPO, OWL, RDF, XSD)
+PREFIX xsd: <{}>""".format(FEDORA, OWL, RDF, XSD)
 
 
 DEDUP_SPARQL = """{}

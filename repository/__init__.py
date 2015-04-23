@@ -18,22 +18,24 @@ CONTEXT = {
     "authz": str(AUTHZ),
     "bf": str(BF),
     "dc": str(DC),
-    "fcrepo": str(FCREPO),
     "fedora": str(FEDORA),
     "fedoraconfig": str(FEDORACONFIG),
     "fedorarelsext": str(FEDORARELSEXT),
     "foaf": str(FOAF),
     "image": str(IMAGE),
+    "iana": str(IANA),
     "indexing": "http://fedora.info/definitions/v4/indexing#",
+    "ldp": str(LDP),
     "mads": str(MADS),
     "mix": str(MIX),
     "mode": "http://www.modeshape.org/1.0",
     "owl": "http://www.w3.org/2002/07/owl#",
+    "pto": str(PTO),
     "nt": "http://www.jcp.org/jcr/nt/1.0",
     "premis": "http://www.loc.gov/premis/rdf/v1#",
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
-    "schema": "http://schema.org/",
+    "schema": str(SCHEMA),
     "sv": "http://www.jcp.org/jcr/sv/1.0",
     "test": "info:fedora/test/",
     "xml": "http://www.w3.org/XML/1998/namespace",
@@ -115,7 +117,7 @@ def ingest_resource(req, resp, resource):
     graph = rdflib.Graph().parse(body['uri'])
     doc_id = str(graph.value(
         subject=fcrepo_uri,
-        predicate=FCREPO.uuid))
+        predicate=FEDORA.uuid))
 
     TripleStore(resource.config).__load__(fuseki_sparql)
 
@@ -263,41 +265,33 @@ class Search(object):
             for graph in graph_json.get('@graph'):
                 # Index only those graphs that have been created in the
                 # repository
-                if 'fcrepo:created' in graph:
+                if 'fedora:created' in graph:
                     for key, val in graph.items():
                         if key in [
-                            'fcrepo:lastModified',
-                            'fcrepo:created',
-                            'fcrepo:uuid'
+                            'fedora:lastModified',
+                            'fedora:created',
+                            'fedora:uuid'
                         ]:
                             self.__set_or_expand__(key, val)
                         elif key.startswith('@type'):
                             for name in val:
+                                #! prefix should be a list 
                                 if prefix:
                                     if name.startswith(prefix):
                                         self.__set_or_expand__('type', name)
                                 else:
                                     self.__set_or_expand__('type', name)
                         elif key.startswith('@id'):
-                            self.__set_or_expand__('fcrepo:hasLocation', val)
-                        elif not key.startswith('fcrepo') and not key.startswith('owl'):
+                            self.__set_or_expand__('fedora:hasLocation', val)
+                        elif not key.startswith('fedora') and not key.startswith('owl'):
                             self.__set_or_expand__(key, val) 
 
-#    def __generate_suggestion__(self, subject, graph):
-#        """Helper method should be overridden by child classes, used for autocorrection 
-#        in Elastic search 
-#
-#        Args:
-#            subject -- RDF Subject
-#            graph -- rdflib.Graph
-#        """
-#        pass
 
-    def __index__(self, subject, graph, doc_type, index): 
-        self.__generate_body__(graph)
+    def __index__(self, subject, graph, doc_type, index, prefix=None): 
+        self.__generate_body__(graph, prefix)
         doc_id = str(graph.value(
                      subject=subject,
-                     predicate=FCREPO.uuid))
+                     predicate=FEDORA.uuid))
         self.__generate_suggestion__(subject, graph, doc_id)
         self.search_index.index(
             index=index,
@@ -319,7 +313,7 @@ class Search(object):
             for row in value:
                 self.body[key].append(self.__get_id_or_value__(row))
         else:
-            self.body[key] = [self.__get_id_or_value__(value),]
+            self.body[key].append(self.__get_id_or_value__(value))
 
     def __update__(self, **kwargs):
         """Helper method updates a stored document in Elastic Search and Fuseki. 
