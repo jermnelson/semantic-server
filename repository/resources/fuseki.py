@@ -7,9 +7,11 @@ import re
 import requests
 from ..utilities.namespaces import *
 
-PREFIX = """PREFIX owl: <{}>
+PREFIX = """PREFIX fedora: <{}>
+PREFIX owl: <{}>
 PREFIX rdf: <{}>
-PREFIX xsd: <{}>""".format(OWL, RDF, XSD)
+PREFIX xsd: <{}>""".format(FCREPO, OWL, RDF, XSD)
+
 
 DEDUP_SPARQL = """{}
 SELECT ?subject
@@ -21,7 +23,7 @@ WHERE {{{{
 GET_ID_SPARQL = """{}
 SELECT ?uuid
 WHERE {{{{
-        ?uuid
+ <{{}}> fedora:uuid ?uuid .
 }}}}""".format(PREFIX)
 
 LOCAL_SUBJECT_PREDICATES_SPARQL = """{}
@@ -96,6 +98,25 @@ class TripleStore(object):
 
 
     def __get_id__(self, fedora_url):
+        """Internal method takes a Fedora URL and returns the uuid associated
+        with the Fedora Resource
+
+        Args:
+            fedora_url -- Fedora URL
+        """
+        result = requests.post(
+            self.query_url,
+            data={"query":  GET_ID_SPARQL.format(fedora_url),
+                  "output": "json"})
+        if result.status_code < 400:
+            return result.json().get('results').get('bindings')
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to retrieve uuid",
+                "Failed to retreive fedora:uuid for {}. Error:\n{}".format(
+                    fedora_url,
+                    result.content))
+
         
 
     def __get_fedora_local__(self, local_url):

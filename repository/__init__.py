@@ -50,6 +50,8 @@ URL_CHECK_RE = re.compile(
     r'(?::\d+)?' # optional port
     r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
+
+
 def create_sparql_insert_row(predicate, object_):
     """Function creates a SPARQL update row based on a predicate and object
 
@@ -223,8 +225,6 @@ class Search(object):
         self.triplestore = TripleStore(config)
         self.body = None
 
-
-
     def __get_id_or_value__(self, value):
         """Helper function takes a dict with either a value or id and returns
         the dict value
@@ -239,17 +239,21 @@ class Search(object):
         elif '@value' in value:
             return value.get('@value')
         elif '@id' in value:
-            sparql = 
+            result = self.triplestore.__get_id__(value.get('@id'))
+            if len(result) > 0:
+                return result[0]['uuid']['value']
             return value.get('@id')
-            #! Need to query triplestore?
-	    #if uri in self.uris2uuid:
-	    #    return self.uris2uuid[uri]
-	    #else:
-	    #    return uri
         return value
 
-
     def __generate_body__(self, graph, prefix=None):
+        """Internal method generates the body for indexing into Elastic search
+        based on the JSON-LD serializations of the Fedora Commons Resource graph.
+
+        Args:
+            graph -- rdflib.Graph of Resource
+            prefix -- Prefix filter, will only index if object starts with a prefix,
+                      default is None to index everything.
+        """
         self.body = dict()
         graph_json = json.loads(
             graph.serialize(
@@ -409,10 +413,6 @@ class Search(object):
                     predicate,
                     object_))
 
-    def url_from_id(self, uuid, index):
-        es_result = self.search_index.get(id=uuid, index=index)
-        
-        return fedora_url
 
 class Repository(object):
     """Base repository object"""
