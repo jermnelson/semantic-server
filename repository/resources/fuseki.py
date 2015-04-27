@@ -338,7 +338,6 @@ WHERE {{{{
     def on_post(self, req, resp):
         
         sparql = req.get_param('sparql') or None
-        print("IN FUSEKI POST sparql={} url={}".format(sparql, self.query_url))
         if sparql is None:
             raise falcon.HTTPMissingParam('sparql')
         result = requests.post(
@@ -349,7 +348,6 @@ WHERE {{{{
                 "Fuseki Server Error",
                 result.text)
         resp.status = falcon.HTTP_200
-        print("Result {}".format(result.json()))
         resp.body = json.dumps(result.json())
 
     def on_patch(self, req, resp):
