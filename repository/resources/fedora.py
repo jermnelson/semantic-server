@@ -79,7 +79,7 @@ class Resource(Repository):
             self.graph.parse(url)
             self.uuid = str(self.graph.value(
                 subject=self.subject, 
-                predicate=FCREPO.uuid))
+                predicate=FEDORA.uuid))
         else:  
             self.graph, self.subject, self.uuid = None, None, None
 
@@ -139,7 +139,7 @@ Fedora object {} already exists""".format(self.uuid)
         self.graph = self.graph.parse(resource_url)
         self.uuid = str(self.graph.value(
                         subject=self.subject,
-                        predicate=FCREPO.uuid))
+                        predicate=FEDORA.uuid))
         if index:
             self.searcher.__index__(self.subject, self.graph, doc_type, index)
         self.searcher.triplestore.__load__(self.graph)
