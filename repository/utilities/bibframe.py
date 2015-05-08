@@ -80,7 +80,7 @@ def get_base_url(graph):
         sparql = """PREFIX rdf: <{0}>
 PREFIX bf: <{1}>
 SELECT ?subject 
-WHERE {{http://bibframe.org/vocab/
+WHERE {{
     ?subject rdf:type {2} .
 }}""" .format(RDF, BF, name)
         for subject in graph.query(sparql):

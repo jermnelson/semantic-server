@@ -122,8 +122,9 @@ def ingest_resource(req, resp, resource):
     TripleStore(resource.config).__load__(fuseki_sparql)
 
 def ingest_turtle(graph):
-    subject = next(graph.subjects(predicate=rdflib.RDF.type))
-    try:
+    subjects = [s for s in set(graph.subjects())]
+    subject = subjects[0]
+    try: 
         raw_turtle = graph.serialize(format='turtle').decode()
         turtle = raw_turtle.replace("<{}>".format(subject), "<>")
         turtle = turtle[:-3]
