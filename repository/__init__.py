@@ -441,23 +441,101 @@ class Repository(object):
         self.config = config
 
 
+    def __create__(self, **kwargs):
+        """Internal method takes optional parameters and creates a new
+        Resource in the Repository 
 
-    def __open_request__(self, fedora_request):
-        """Internal method takes a urllib.request.Request and attempts to open
-        the request with either the opener or direct urlopen call and then
-        returns the result as a string.
+	keyword args:
+            binary -- Binary object for the Fedora Object, metadata will
+                be stored as metadata to Binary.
+            doc_type -- Elastic search document type, defaults to None
+	    id -- Existing identifier defaults to None
+            index -- Elastic search index, defaults to None
+            mimetype -- Mimetype for binary stream, defaults to application/octet-stream
+            rdf -- RDF graph of new object, defaults to None
+            rdf_type -- RDF Type, defaults to text/turtle
+        """
+        pass
+
+    def __new_property__(self, name, value):
+        """Internal method adds a property to a Fedora Resource
 
         Args:
-            fedora_request -- urllib.request.Request
+            name -- Name of property, should have correct prefix (i.e. bf, 
+                    schema, fedora) 
+            value -- value of property 
         Returns:
-            str
+            boolean -- outcome of PATCH method call to Fedora
         """
-        if self.opener:
-            result = self.opener(fedora_request)
-        else:
-            result = urllib.request.urlopen(fedora_request)
-        return result.read().decode()
+        pass
 
+    def __replace_property__(self, name, current, new):
+        """Internal method replaces a property (predicate) of the 
+        Resource with a new value.
+
+        Args:
+            name -- Property name, should have correct prefix 
+                   (i.e. bf,  schema, fedora) 
+            current -- current value of property 
+            new -- new value of property
+        """
+        pass
+
+    def on_get(self, req, resp, id):
+        """GET Method response, returns JSON, XML, N3, or Turtle representations
+        of 
+	    Args:
+            req -- Request
+            resp -- Response
+	        id -- A unique ID for the Resource, should be UUID
+        """
+        pass
+
+
+    def on_post(self, req, resp):
+        """POST Method response, accepts optional binary file and RDF as
+        request parameters in the POST
+
+        Args:
+            req -- Request
+            resp -- Response
+        """
+        pass
+
+
+    def on_delete(self, req, resp, id):
+        """DELETE Method either deletes one or more predicate and objects from a
+        Resource, or if both predicate and object are None, deletes the Resource
+        itself. Should cascade through to Triplestore and Elasticsearch.
+
+        Args:
+            req -- Request
+            resp -- Response
+	        id -- A unique ID for the Resource, should be UUID
+        """
+        pass
+
+
+    def on_get(self, req, resp, id):
+        """GET Method response, returns JSON, XML, N3, or Turtle representations
+
+        Args:
+            req -- Request
+            resp -- Response
+            id -- A unique ID for the Resource, should be UUID
+        """
+        pass
+
+    def on_put(self, req, resp, id):
+        """PUT method takes an id, a list of predicate and object tuples and
+        updates Repository
+
+        Args:
+            req -- Request
+            resp -- Response
+            id -- Unique ID for the Resource
+        """
+        pass
 
 
 
