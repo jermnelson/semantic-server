@@ -487,7 +487,7 @@ class Repository(object):
 	    Args:
             req -- Request
             resp -- Response
-	        id -- A unique ID for the Resource, should be UUID
+	    id -- A unique ID for the Resource, should be UUID
         """
         pass
 
