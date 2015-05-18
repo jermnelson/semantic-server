@@ -222,9 +222,10 @@ class Search(object):
     """Search Repository"""
 
     def __init__(self, config):
-        self.search_index = Elasticsearch(
-            [{"host": config["ELASTICSEARCH"]["host"],
-              "port": config["ELASTICSEARCH"]["port"]}])
+        if 'ELASTICSEARCH' in config:
+            self.search_index = Elasticsearch(
+                [{"host": config["ELASTICSEARCH"]["host"],
+                  "port": config["ELASTICSEARCH"]["port"]}])
         self.triplestore = TripleStore(config)
         self.body = None
 
