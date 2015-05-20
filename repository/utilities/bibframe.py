@@ -15,6 +15,7 @@ import base64
 import datetime
 import falcon
 import json
+import logging
 import os
 import rdflib
 import re
@@ -23,18 +24,30 @@ import sys
 import urllib.parse
 import urllib.request
 from .ingesters import default_graph, GraphIngester, subjects_list
-from .. import CONTEXT, Search
+from .. import CONTEXT, Search, generate_prefix
 from ..resources.fedora import Resource
 from elasticsearch import Elasticsearch
 from .namespaces import *
 from .cover_art import by_isbn
 
-COVER_ART_SPARQL = """PREFIX bf: <{}>
-PREFIX rdf: <{}>
+logging.basicConfig(filename='bibframe-error.log',
+                    format='%(asctime)s %(funcName)s %(message)s',
+                    level=logging.ERROR)
+
+PREFIX = generate_prefix()
+
+COVER_ART_SPARQL = """{}
 SELECT DISTINCT ?cover
 WHERE {{
   ?cover rdf:type bf:CoverArt .
-}}""".format(BF, RDF)
+}}""".format(PREFIX)
+
+
+GET_SLICE_SUBJECTS_SPARQL = """{}
+SELECT DISTINCT ?subject ?uuid
+WHERE {{{{
+   ?subject fedora:uuid ?uuid .
+}}}} LIMIT {{}} OFFSET {{}}""".format(PREFIX)
 
 def guess_search_doc_type(graph, fcrepo_uri):
     """Function takes a graph and attempts to guess the Doc type for ingestion
@@ -269,9 +282,59 @@ class BIBFRAMESearch(Search):
                 "output": ' '.join(input_),
                 "payload": {"id": doc_id}}
 
-                                
-        
+    def __reindex__(self, limit=10000):
+        """Internal method re-indexes Repository named graphs into 
+        Elasticsearch.
 
+        Args:
+            limit -- Shard size, default is 10,000
+        """
+        count_result = requests.post(
+            self.triplestore.query_url,
+            data={"query": "SELECT COUNT(distinct ?s)\nWHERE {\n?s ?p ?o\n}",
+                  "output": "json"})
+        if count_result.status_code < 400:
+            bindings = count_result.json()['results']['bindings']
+            if len(bindings) > 0:
+                total = bindings[0]['.1']['value']
+                shards = int(total)/limit
+                for i in range(1, int(shards+2)):
+                    print("Shard {}".format(i))
+                    shard_result = requests.post(
+                        self.triplestore.query_url,
+                        data={"query": GET_SLICE_SUBJECTS_SPARQL.format(
+                                           limit, 
+                                          (i-1)*limit),
+                              "output": "json"})
+                    if shard_result.status_code > 399:
+                        logging.error(
+                            "Could not re-index shard {}, error={}".format(
+                            i, shard_result.text))
+                        continue
+                    bindings = shard_result.json().get('results').get('bindings')
+                    for i, row in enumerate(bindings):
+                        fedora_url = row.get('subject').get('value')
+                        graph = default_graph()
+                        try:
+                            graph.parse(fedora_url)
+                            fedora_uri = rdflib.URIRef(fedora_url)
+                            self.__index__(
+                                fedora_uri,
+                                graph,
+                                guess_search_doc_type(graph, fedora_uri),
+                                'bibframe',
+                                'bf')
+                        except:
+                            logging.error("Error {} with {}".format(
+                                sys.exc_info(),
+                                fedora_url))
+                            continue
+                        if not i%10:
+                            print(".", end="")
+                        if not i%100:
+                            print(i, end="")
+            print("Finished reindexing")
+                                
 def main():
     """Main function"""
     pass

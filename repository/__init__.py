@@ -447,8 +447,7 @@ class Repository(object):
         Resource in the Repository 
 
 	keyword args:
-            binary -- Binary object for the Fedora Object, metadata will
-                be stored as metadata to Binary.
+            binary -- Binary object, any rdf will be stored as object's metadata 
             doc_type -- Elastic search document type, defaults to None
 	    id -- Existing identifier defaults to None
             index -- Elastic search index, defaults to None
@@ -459,14 +458,14 @@ class Repository(object):
         pass
 
     def __new_property__(self, name, value):
-        """Internal method adds a property to a Fedora Resource
+        """Internal method adds a property to a Resource
 
         Args:
             name -- Name of property, should have correct prefix (i.e. bf, 
                     schema, fedora) 
             value -- value of property 
         Returns:
-            boolean -- outcome of PATCH method call to Fedora
+            boolean -- outcome of PATCH method call to repository 
         """
         pass
 
@@ -484,7 +483,7 @@ class Repository(object):
 
     def on_get(self, req, resp, id):
         """GET Method response, returns JSON, XML, N3, or Turtle representations
-        of 
+        of Entity
 	    Args:
             req -- Request
             resp -- Response
@@ -512,7 +511,7 @@ class Repository(object):
         Args:
             req -- Request
             resp -- Response
-	        id -- A unique ID for the Resource, should be UUID
+	    id -- A unique ID for the Resource, should be UUID
         """
         pass
 
@@ -529,7 +528,7 @@ class Repository(object):
 
     def on_put(self, req, resp, id):
         """PUT method takes an id, a list of predicate and object tuples and
-        updates Repository
+        updates repository
 
         Args:
             req -- Request
