@@ -37,9 +37,10 @@ logging.basicConfig(filename='bibframe-error.log',
 PREFIX = generate_prefix()
 
 COVER_ART_SPARQL = """{}
-SELECT DISTINCT ?cover
+SELECT DISTINCT ?cover ?instance
 WHERE {{
   ?cover rdf:type bf:CoverArt .
+  ?cover bf:coverArtFor ?instance .
 }}""".format(PREFIX)
 
 
@@ -233,8 +234,14 @@ class BIBFRAMESearch(Search):
         query = graph.query(COVER_ART_SPARQL)
         if len(query.bindings) > 0:
              cover_url = query.bindings[0]['?cover']
+             instance_url = query.bindings[0]['?instance']
              image_url = str(cover_url).split(
                  "fcr:metadata")[0]
+             # Update instance with schema:image
+             instance_id = self.triplestore.__get_id__(instance_url) 
+             self.__update__(instance_id, 
+                             "schema:image", 
+                             self.triplestore.__get_id__(cover_url))
              image_result = requests.get(image_url)
              if image_result.status_code < 400:
                  raw_image = image_result.content
@@ -282,12 +289,13 @@ class BIBFRAMESearch(Search):
                 "output": ' '.join(input_),
                 "payload": {"id": doc_id}}
 
-    def __reindex__(self, limit=10000):
+    def __reindex__(self, limit=10000, verbose=False):
         """Internal method re-indexes Repository named graphs into 
         Elasticsearch.
 
         Args:
             limit -- Shard size, default is 10,000
+            verbose -- Display progress, default is False
         """
         count_result = requests.post(
             self.triplestore.query_url,
@@ -298,8 +306,18 @@ class BIBFRAMESearch(Search):
             if len(bindings) > 0:
                 total = bindings[0]['.1']['value']
                 shards = int(total)/limit
+                start = datetime.datetime.utcnow()
+                if verbose:
+                    print("Subject re-indexing at {}, total={} shards={}".format(
+                        start.isoformat(), total, shards))
+                         
                 for i in range(1, int(shards+2)):
-                    print("Shard {}".format(i))
+                    start_shard = datetime.datetime.utcnow()
+                    if verbose:
+                        print("shard {} started at {}, elapsed time={} minutes".format(
+                            i, 
+                            start_shard.isoformat(),
+                            (start_shard-start).seconds / 60.0))
                     shard_result = requests.post(
                         self.triplestore.query_url,
                         data={"query": GET_SLICE_SUBJECTS_SPARQL.format(
@@ -329,11 +347,14 @@ class BIBFRAMESearch(Search):
                                 sys.exc_info(),
                                 fedora_url))
                             continue
-                        if not i%10:
+                        if not i%10 and verbose:
                             print(".", end="")
-                        if not i%100:
+                        if not i%100 and verbose:
                             print(i, end="")
-            print("Finished reindexing")
+            end = datetime.datetime.utcnow()
+            if verbose:
+                print("Finished reindexing at {}, total time={} minutes")
+
                                 
 def main():
     """Main function"""
