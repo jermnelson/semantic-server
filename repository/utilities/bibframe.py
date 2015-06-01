@@ -33,6 +33,10 @@ from .cover_art import by_isbn
 logging.basicConfig(filename='bibframe-error.log',
                     format='%(asctime)s %(funcName)s %(message)s',
                     level=logging.ERROR)
+logging.basicConfig(filename='bibframe-debug.log',
+                    format='%(asctime)s %(funcName)s %(message)s',
+                    level=logging.DEBUG)
+
 
 PREFIX = generate_prefix()
 
@@ -72,6 +76,7 @@ def guess_search_doc_type(graph, fcrepo_uri):
         'Annotation',
         'Authority',
         'HeldItem',
+        'Identifier',
         'Person',
         'Place',
         'Provider',
@@ -239,9 +244,9 @@ class BIBFRAMESearch(Search):
                  "fcr:metadata")[0]
              # Update instance with schema:image
              instance_id = self.triplestore.__get_id__(instance_url) 
-             self.__update__(instance_id, 
-                             "schema:image", 
-                             self.triplestore.__get_id__(cover_url))
+             self.__update__(doc_id=instance_id, 
+                             field="schema:image", 
+                             value=self.triplestore.__get_id__(cover_url))
              image_result = requests.get(image_url)
              if image_result.status_code < 400:
                  raw_image = image_result.content
@@ -333,27 +338,34 @@ class BIBFRAMESearch(Search):
                     for i, row in enumerate(bindings):
                         fedora_url = row.get('subject').get('value')
                         graph = default_graph()
-                        try:
-                            graph.parse(fedora_url)
-                            fedora_uri = rdflib.URIRef(fedora_url)
-                            self.__index__(
-                                fedora_uri,
-                                graph,
-                                guess_search_doc_type(graph, fedora_uri),
-                                'bibframe',
-                                'bf')
-                        except:
-                            logging.error("Error {} with {}".format(
-                                sys.exc_info(),
-                                fedora_url))
-                            continue
+                        doc_type = guess_search_doc_type(graph, fedora_url)
+                        if doc_type.startswith("CoverArt"):
+                            fedora_url = "{}/fcr:metadata".format(fedora_url)
+                            print("Fedora url {} and doc_type is {}".format(doc_type, fedora_url))
+##                        try:
+                        graph.parse(fedora_url)
+                        fedora_uri = rdflib.URIRef(fedora_url)
+                        
+                        self.__index__(
+                            fedora_uri,
+                            graph,
+                            doc_type,
+                            'bibframe',
+                            'bf')
+##                        except:
+##                            logging.error("Error {} with {}".format(
+##                                sys.exc_info(),
+##                                fedora_url))
+##                            continue
                         if not i%10 and verbose:
                             print(".", end="")
                         if not i%100 and verbose:
                             print(i, end="")
             end = datetime.datetime.utcnow()
             if verbose:
-                print("Finished reindexing at {}, total time={} minutes")
+                print("Finished reindexing at {}, total time={} minutes".format(
+                    end.isoformat(),
+                    (end-start).seconds / 60.0))
 
                                 
 def main():
