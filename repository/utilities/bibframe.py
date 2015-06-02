@@ -81,6 +81,7 @@ def guess_search_doc_type(graph, fcrepo_uri):
         'Place',
         'Provider',
         'Title',
+        'CoverArt',
         'Topic',
         'Organization',
         'Instance'
@@ -225,6 +226,16 @@ class BIBFRAMESearch(Search):
     def __init__(self, **kwargs):
         super(BIBFRAMESearch, self).__init__(**kwargs)
 
+    def __filter_date__(self, graph, date):
+        """Internal method removes date from graph if date cannot be 
+        parsed for indexing.
+
+        Args:
+            graph -- rdflib.Graph of BIBFRAME Resource
+            date -- Date URIRef to filter on
+        """
+        pass
+
     def __generate_body__(self, graph, prefix=None):
         """Internal method overrides default Search body generator to 
         for additional index processing on specific types.
@@ -234,6 +245,8 @@ class BIBFRAMESearch(Search):
             prefix -- Prefix filter, will only index if object starts with a prefix,
                       default is None to index everything.
         """
+        # Filter out bf:changeDate
+        self.__filter_date__(graph, BF.changeDate)
         super(BIBFRAMESearch, self).__generate_body__(graph, prefix)
         # Add coverArt annotationBody as base64 encoded jpg to body 
         query = graph.query(COVER_ART_SPARQL)
@@ -243,10 +256,13 @@ class BIBFRAMESearch(Search):
              image_url = str(cover_url).split(
                  "fcr:metadata")[0]
              # Update instance with schema:image
-             instance_id = self.triplestore.__get_id__(instance_url) 
+             instance_result = self.triplestore.__get_id__(instance_url) 
+             instance_id=instance_result[0].get('uuid').get('value')
+             cover_result = self.triplestore.__get_id__(cover_url)
+             cover_id=cover_result[0].get('uuid').get('value')
              self.__update__(doc_id=instance_id, 
                              field="schema:image", 
-                             value=self.triplestore.__get_id__(cover_url))
+                             value=cover_id)
              image_result = requests.get(image_url)
              if image_result.status_code < 400:
                  raw_image = image_result.content
@@ -338,25 +354,29 @@ class BIBFRAMESearch(Search):
                     for i, row in enumerate(bindings):
                         fedora_url = row.get('subject').get('value')
                         graph = default_graph()
-                        doc_type = guess_search_doc_type(graph, fedora_url)
-                        if doc_type.startswith("CoverArt"):
+                        try:
+                            graph.parse(fedora_url)
+                        except rdflib.plugin.PluginException:
                             fedora_url = "{}/fcr:metadata".format(fedora_url)
-                            print("Fedora url {} and doc_type is {}".format(doc_type, fedora_url))
-##                        try:
-                        graph.parse(fedora_url)
+                            graph.parse(fedora_url)
+                        except:
+                            logging.error("RDF Parse for {} Error {}".format(
+                                fedora_url,
+                                sys.exc_info()[0]))
+                            continue
                         fedora_uri = rdflib.URIRef(fedora_url)
-                        
-                        self.__index__(
-                            fedora_uri,
-                            graph,
-                            doc_type,
-                            'bibframe',
-                            'bf')
-##                        except:
-##                            logging.error("Error {} with {}".format(
-##                                sys.exc_info(),
-##                                fedora_url))
-##                            continue
+                        doc_type = guess_search_doc_type(graph, fedora_uri)
+                        try:
+                            self.__index__(
+                                fedora_uri,
+                                graph,
+                                doc_type,
+                                'bibframe',
+                                'bf')
+                        except:
+                            logging.error("Could not index {}, error={}".format(
+                                fedora_url,
+                                sys.exc_info()[0]))
                         if not i%10 and verbose:
                             print(".", end="")
                         if not i%100 and verbose:

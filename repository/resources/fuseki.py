@@ -305,7 +305,7 @@ WHERE {{{{
             insert_str += " <{}> ".format(predicate)
         else:
             insert_str += ' "{}" '.format(predicate)
-        if URL_CHECK_RE.seach(object_):
+        if URL_CHECK_RE.search(object_):
             insert_str += ' <{}> '.format(object_)
         elif PREFIX_CHECK_RE.search(object_):
             insert_str += ' {} '.format(object_)

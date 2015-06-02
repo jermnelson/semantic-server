@@ -353,7 +353,10 @@ class Search(object):
             }})
         result = self.triplestore.__get_subject__(uuid=doc_id)
         if len(result) == 1:
-            self.triplestore.__update__(result[0]['value'], field, value)         
+            self.triplestore.__update_triple__(
+                result[0]['subject']['value'], 
+                field, 
+                value)         
             
 
     def on_get(self, req, resp):
