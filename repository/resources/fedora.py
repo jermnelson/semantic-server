@@ -66,9 +66,12 @@ class Resource(Repository):
 
     def __init__(self, config, searcher=None, url=None):
         super(Resource, self).__init__(config)
-        self.rest_url = "http://{}:{}/rest".format(
+        self.rest_url = "http://{}:{}".format(
             self.fedora['host'],
             self.fedora['port'])
+        if 'url_prefix' in self.fedora:
+            self.rest_url += "/{}".format(self.fedora['url_prefix'])
+        self.rest_url += "/rest"
         if searcher is None:
             self.searcher = Search(config)
         else:

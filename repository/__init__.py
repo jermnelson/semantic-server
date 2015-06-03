@@ -223,9 +223,11 @@ class Search(object):
 
     def __init__(self, config):
         if 'ELASTICSEARCH' in config:
-            self.search_index = Elasticsearch(
-                [{"host": config["ELASTICSEARCH"]["host"],
-                  "port": config["ELASTICSEARCH"]["port"]}])
+            options = {"host": config["ELASTICSEARCH"]["host"],
+                       "port": config["ELASTICSEARCH"]["port"]}
+            if 'url_prefix' in config["ELASTICSEARCH"]:
+                options['url_prefix'] = config["ELASTICSEARCH"]['url_prefix']
+            self.search_index = Elasticsearch(options)
         self.triplestore = TripleStore(config)
         self.body = None
 
@@ -416,32 +418,16 @@ class Search(object):
 class Repository(object):
     """Base repository object"""
 
-
     def __init__(self, config):
         """Initializes a Repository object.
 
         Arguments:
             config -- Configuration object
         """
-        if 'FEDORA3' in config:
-            admin = self.config.get('FEDORA3', 'username')
-            admin_pwd = self.config.get('FEDORA3', 'password')
-
         self.fedora = config['FEDORA']
         self.search = Search(config)
         admin = self.fedora.get('username', None)
         admin_pwd = self.fedora.get('password', None)
-        self.opener = None
-        # Create a Password manager
-        if admin and admin_pwd:
-            password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-            password_mgr.add_password(
-                None,
-                "{}:{}".format(self.fedora['host'], self.fedora['port']),
-                admin,
-                admin_pwd)
-            handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
-            self.opener = urllib.request.build_opener(handler)
         self.config = config
 
 

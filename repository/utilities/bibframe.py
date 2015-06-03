@@ -26,7 +26,6 @@ import urllib.request
 from .ingesters import default_graph, GraphIngester, subjects_list
 from .. import CONTEXT, Search, generate_prefix
 from ..resources.fedora import Resource
-from elasticsearch import Elasticsearch
 from .namespaces import *
 from .cover_art import by_isbn
 

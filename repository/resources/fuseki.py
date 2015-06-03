@@ -92,6 +92,8 @@ class TripleStore(object):
             url = "http://{}:{}".format(
                 config["FUSEKI"]["host"],
                 config["FUSEKI"]["port"])
+            if "url_prefix" in config["FUSEKI"]:
+                url += "/{}".format(config["FUSEKI"]["url_prefix"])
             datastore = config["FUSEKI"]["datastore"]
         self.update_url = "/".join([url, datastore, "update"])
         self.query_url = "/".join([url, datastore, "query"])

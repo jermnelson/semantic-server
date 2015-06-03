@@ -25,6 +25,19 @@ class FedoraObject(Repository):
         super(FedoraObject, self).__init__(config)
         if not 'FEDORA3' in config:
             raise ValueError("FedoraObject requires Fedora 3.x configuration")
+        admin = self.config.get('FEDORA3', 'username')
+        admin_pwd = self.config.get('FEDORA3', 'password')
+        self.opener = None
+        # Create a Password manager
+        if admin and admin_pwd:
+            password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+            password_mgr.add_password(
+                None,
+                "{}:{}".format(self.fedora['host'], self.fedora['port']),
+                admin,
+                admin_pwd)
+            handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+            self.opener = urllib.request.build_opener(handler)
         self.base_url = "{}:{}/objects/".format(
             config['FEDORA3']['host'],
             config['FEDORA3']['port'])
