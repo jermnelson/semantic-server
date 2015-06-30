@@ -80,9 +80,7 @@ class Resource(Repository):
             self.subject = rdflib.URIRef(url)
             self.graph = default_graph()
             self.graph.parse(url)
-            self.uuid = str(self.graph.value(
-                subject=self.subject, 
-                predicate=FEDORA.uuid))
+            self.uuid = url.split("/")[-1]
         else:  
             self.graph, self.subject, self.uuid = None, None, None
 
@@ -140,9 +138,7 @@ Fedora object {} already exists""".format(self.uuid)
         self.subject = rdflib.URIRef(resource_url)
         self.graph = default_graph()
         self.graph = self.graph.parse(resource_url)
-        self.uuid = str(self.graph.value(
-                        subject=self.subject,
-                        predicate=FEDORA.uuid))
+        self.uuid = resource_url.split("/")[-1]
         if index:
             self.searcher.__index__(self.subject, self.graph, doc_type, index)
         self.searcher.triplestore.__load__(self.graph)

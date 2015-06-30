@@ -11,7 +11,8 @@ import re
 import urllib.request
 
 from elasticsearch import Elasticsearch
-from .resources.fuseki import TripleStore
+#from .resources.fuseki import TripleStore
+from .resources.blazegraph import TripleStore
 from .utilities.namespaces import *
 
 CONTEXT = {
