@@ -5,57 +5,8 @@ import json
 import rdflib
 import re
 import requests
-from ..utilities.namespaces import *
 
-PREFIX = """PREFIX fedora: <{}>
-PREFIX owl: <{}>
-PREFIX rdf: <{}>
-PREFIX xsd: <{}>""".format(FEDORA, OWL, RDF, XSD)
-
-
-DEDUP_SPARQL = """{}
-SELECT ?subject
-WHERE {{{{
-    ?subject <{{}}> "{{}}"^^xsd:string .
-    ?subject rdf:type <{{}}> .
-}}}}""".format(PREFIX)
-
-GET_ID_SPARQL = """{}
-SELECT ?uuid
-WHERE {{{{
- <{{}}> fedora:uuid ?uuid .
-}}}}""".format(PREFIX)
-
-LOCAL_SUBJECT_PREDICATES_SPARQL = """{}
-SELECT DISTINCT *
-WHERE {{{{
-  ?subject ?predicate <{{0}}> .
-  FILTER NOT EXISTS {{{{ ?subject owl:sameAs <{{0}}> }}}}
-
-}}}}""".format(PREFIX)
-
-REPLACE_OBJECT_SPARQL = """{}
-DELETE {{{{
-    <{{0}}> {{1}} {{2}} .
-}}}}
-INSERT {{{{
-    <{{0}}> {{1}} {{3}} 
-}}}}
-WHERE {{{{
-}}}}""".format(PREFIX)
-
-
-SAME_AS_SPARQL = """{}
-SELECT DISTINCT ?subject
-WHERE {{{{
-  ?subject owl:sameAs {{}} .
-}}}}""".format(PREFIX)
-
-
-UPDATE_TRIPLESTORE_SPARQL = """{}
-INSERT DATA {{{{
-   {{}}
-}}}}""".format(PREFIX)
+from ..utilities.sparql_templates import *
 
 PREFIX_CHECK_RE = re.compile(r'\w+[:][a-zA-Z]')
 

@@ -114,11 +114,8 @@ def ingest_resource(req, resp, resource):
     """
     body = json.loads(resp.body)
     fcrepo_uri = rdflib.URIRef(body['uri'])
+    doc_id = body['uri'].split("/")[-1]
     graph = rdflib.Graph().parse(body['uri'])
-    doc_id = str(graph.value(
-        subject=fcrepo_uri,
-        predicate=FEDORA.uuid))
-
     TripleStore(resource.config).__load__(fuseki_sparql)
 
 def ingest_turtle(graph):
@@ -293,9 +290,7 @@ class Search(object):
 
     def __index__(self, subject, graph, doc_type, index, prefix=None): 
         self.__generate_body__(graph, prefix)
-        doc_id = str(graph.value(
-                     subject=subject,
-                     predicate=FEDORA.uuid))
+        doc_id = str(subject).split("/")[-1]
         self.__generate_suggestion__(subject, graph, doc_id)
         self.search_index.index(
             index=index,
