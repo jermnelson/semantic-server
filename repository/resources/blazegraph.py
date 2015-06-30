@@ -8,7 +8,7 @@ class TripleStore(object):
 
     def __init__(self, config={}):
         self.config = config
-        self.url = config.get("BLAZEGRAPH").get("url")
+        self.url = config.get("BLAZEGRAPH", "url")
 
 
     def __load__(self, rdf):

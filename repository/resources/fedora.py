@@ -66,7 +66,7 @@ class Resource(Repository):
 
     def __init__(self, config, searcher=None, url=None):
         super(Resource, self).__init__(config)
-        self.rest_url = "http://{}:{}".format(
+        self.rest_url = "http://{}:{}/fedora".format(
             self.fedora['host'],
             self.fedora['port'])
         if 'url_prefix' in self.fedora:
@@ -119,6 +119,7 @@ Fedora object {} already exists""".format(self.uuid)
             fedora_post_url = self.rest_url
         # First check and add binary datastream
         if binary:
+            print(fedora_post_url)
             resource_url = self.__new_binary__(
                 fedora_post_url, 
                 binary, 
