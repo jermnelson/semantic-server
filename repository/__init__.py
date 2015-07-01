@@ -126,7 +126,8 @@ def ingest_turtle(graph):
         raw_turtle = graph.serialize(format='turtle').decode()
         turtle = raw_turtle.replace("<{}>".format(subject), "<>")
         turtle = turtle[:-3]
-        turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
+        if type(subject) == rdflib.URIRef:
+            turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
     except:
         turtle = ""
         for predicate, object_ in graph.predicate_objects():

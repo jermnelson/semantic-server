@@ -119,7 +119,6 @@ Fedora object {} already exists""".format(self.uuid)
             fedora_post_url = self.rest_url
         # First check and add binary datastream
         if binary:
-            print(fedora_post_url)
             resource_url = self.__new_binary__(
                 fedora_post_url, 
                 binary, 
@@ -237,7 +236,22 @@ Fedora object {} already exists""".format(self.uuid)
             self.searcher.__update__(self.uuid, name, value)
             return True
         return False  
-           
+          
+    def __replace_binary__(self, 
+                           url, 
+                           binary, 
+                           content_type='application/octet-stream'):
+        if url.endswith("fcr:metadata"):
+            url = url.split("/fcr:metadata")[0]
+        replace_result = requests.put(
+            url,
+            files={"file": binary},
+            headers={"Content-Type": content_type})
+        if replace_result.status_code < 400:
+            return True
+        return False
+        
+ 
     def __replace_property__(self, name, current, new):
         """Internal method replaces a property (predicate) of the Fedora 
         Resource with a new value.
