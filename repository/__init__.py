@@ -31,6 +31,7 @@ CONTEXT = {
     "mix": str(MIX),
     "mode": "http://www.modeshape.org/1.0",
     "owl": "http://www.w3.org/2002/07/owl#",
+    "openbadge": str(OB),
     "pto": str(PTO),
     "nt": "http://www.jcp.org/jcr/nt/1.0",
     "premis": "http://www.loc.gov/premis/rdf/v1#",
@@ -119,14 +120,14 @@ def ingest_resource(req, resp, resource):
     graph = rdflib.Graph().parse(body['uri'])
     TripleStore(resource.config).__load__(fuseki_sparql)
 
-def ingest_turtle(graph):
+def ingest_turtle(graph, localhost=False):
     subjects = [s for s in set(graph.subjects())]
     subject = subjects[0]
     try: 
         raw_turtle = graph.serialize(format='turtle').decode()
         turtle = raw_turtle.replace("<{}>".format(subject), "<>")
         turtle = turtle[:-3]
-        if type(subject) == rdflib.URIRef:
+        if type(subject) == rdflib.URIRef and localhost:
             turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
     except:
         turtle = ""
