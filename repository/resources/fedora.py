@@ -209,7 +209,7 @@ Fedora object {} already exists""".format(self.uuid)
         return metadata_url
     
        
-    def __new_property__(self, name, value):
+    def __new_property__(self, name, value, index=True):
         """Internal method adds a property to a Fedora Resource
 
         Args:
@@ -234,8 +234,8 @@ Fedora object {} already exists""".format(self.uuid)
             data=sparql,
             headers={'Content-Type': 'application/sparql-update'})
         if fedora_result.status_code < 300:
-            print("UPdated {} {} {}".format(self.subject, name, value))
-            self.searcher.__update__(self.uuid, name, value)
+            if index:
+                self.searcher.__update__(doc_id=self.uuid, field=name, value=value)
             return True
         return False  
           
