@@ -229,13 +229,17 @@ Fedora object {} already exists""".format(self.uuid)
             url=str(self.subject),
             name=name,
             value=value)
+        
         fedora_result = requests.patch(
             str(self.subject),
             data=sparql,
             headers={'Content-Type': 'application/sparql-update'})
         if fedora_result.status_code < 300:
             if index:
-                self.searcher.__update__(doc_id=self.uuid, field=name, value=value)
+                self.searcher.__update__(
+                    doc_id=self.uuid, 
+                    field=name, 
+                    value=value)
             return True
         return False  
           

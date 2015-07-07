@@ -22,6 +22,13 @@ WHERE {{{{
  <{{}}> fedora:uuid ?uuid .
 }}}}""".format(PREFIX)
 
+GET_SUBJECT_SPARQL = """{}
+SELECT DISTINCT *
+WHERE {{{{
+ ?subject {{}} {{}} .
+}}}}""".format(PREFIX)
+
+
 LOCAL_SUBJECT_PREDICATES_SPARQL = """{}
 SELECT DISTINCT *
 WHERE {{{{
@@ -39,6 +46,7 @@ INSERT {{{{
 }}}}
 WHERE {{{{
 }}}}""".format(PREFIX)
+
 
 
 SAME_AS_SPARQL = """{}

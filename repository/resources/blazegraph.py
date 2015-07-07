@@ -11,6 +11,39 @@ class TripleStore(object):
         self.url = config.get("BLAZEGRAPH", "url")
 
 
+    def __get_subject__(self, **kwargs):
+        predicate = kwargs.get('predicate', 'owl:sameAs')
+        if 'uuid' in kwargs:
+            sparql = GET_SUBJECT_SPARQL.format(
+                predicate,
+                '"{}"^^xsd:string'.format(kwargs.get('uuid')))
+        elif 'url' in kwargs:
+            sparql = GET_SUBJECT_SPARQL.format(
+                predicate,
+                "<{}>".format(kwargs.get('url')))
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Missing object for predicate {}".format(predicate),"")
+        subject_search = requests.post(
+            self.url,
+            data={"query": sparql,
+                  "format": "json"})
+        if subject_search.status_code > 399:
+            raise falcon.HTTPInternalServerError(
+                "Blazegraph Error with predicate={}".format(predicate),
+                "Error:\n{}\nSPARQL{}".format(subject_search.text,
+                                        sparql))
+        bindings = subject_search.json().get('results').get('bindings')
+        if len(bindings) < 1:
+            return
+        # Preferred Case - our object functions as a unique identifier
+        elif len(bindings) == 1:
+            return bindings[0].get('subject').get('value')
+        # Now return a list of subjects
+        return [r.get('subject').get('value') for r in bindings]                                
+      
+                    
+
     def __load__(self, rdf):
         """Internal Method loads a RDF graph into Fuseki
 
@@ -26,7 +59,7 @@ class TripleStore(object):
             raise falcon.HTTPInternalServerError(
                 "Failed to load RDF into {}".format(self.url),
                 "Error:\n{}\nRDF:\n{}".format(
-                    fuseki_result.text,
+                    blaze_result.text,
                     rdf))
 
     def __match__(self, **kwargs):    
@@ -70,7 +103,7 @@ class TripleStore(object):
         if result.status_code < 400:
             raise falcon.HTTPInternalServerError(
                 "Failed to update triple",
-                "Failed to update {} {} {} to Fuseki.\nError={}".format(
+                "Failed to update {} {} {} to Blazegraog.\nError={}".format(
                     subject,
                     predicate,
                     object_,
