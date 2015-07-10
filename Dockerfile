@@ -6,5 +6,12 @@ RUN pip3 install falcon \
     && pip3 install rdflib \
     && pip3 install Werkzeug
 
-# Run's on port 18150 (in honor of Ada Lovelace's 200th birthday)
+ADD https://github.com/jermnelson/semantic-server.git /opt/
+RUN cd /opt/semantic-server \
+    && git checkout -b development \
+    && git pull origin development 
+
+# Runs on port 18150 (in honor of Ada Lovelace's 200th birthday)
 EXPOSE 18150
+
+CMD python app.py
