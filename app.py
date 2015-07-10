@@ -131,13 +131,13 @@ if 'ISLANDORA' in config:
 
 def main():
     "Simple main function runs wsgi container"
-    debug = config.getboolean('REST_API', 'debug') or False
+    debug = config.getboolean('DEFAULT', 'debug') or False
     logging.basicConfig(
         filename= config.get('LOGGING', 'filename'),
         level=int(config.get('LOGGING', 'level')))
     run_simple(
-        config.get('REST_API', 'host'),
-        config.getint('REST_API', 'port'),
+        config.get('DEFAULT', 'host'),
+        config.getint('DEFAULT', 'port', fallback=18150),
         application,
         use_reloader=debug)
 

@@ -8,7 +8,10 @@ class TripleStore(object):
 
     def __init__(self, config={}):
         self.config = config
-        self.url = config.get("BLAZEGRAPH", "url")
+        self.url = "http://{}:{}/{}".format(
+            config.get("BLAZEGRAPH", 'host'),
+            config.get('TOMCAT', 'port'),
+            config.get("BLAZEGRAPH", 'path'))
 
 
     def __get_subject__(self, **kwargs):

@@ -144,7 +144,7 @@ class Info(object):
     def on_get(self,  req, resp):
         resp.status = falcon.HTTP_200
         resp.body = json.dumps(
-            {"services": str(self.config)}
+            {"services": self.config.sections()}
         )
 
 def get_id_or_value(value):
@@ -224,11 +224,11 @@ class Search(object):
     def __init__(self, config):
         self.search_index = None
         if 'ELASTICSEARCH' in config:
-            options = {"host": config["ELASTICSEARCH"]["host"],
-                       "port": config["ELASTICSEARCH"]["port"]}
-            if 'url_prefix' in config["ELASTICSEARCH"]:
-                options['url_prefix'] = config["ELASTICSEARCH"]['url_prefix']
-            self.search_index = Elasticsearch(options)
+            es_path = "{}:{}/{}".format(
+                config.get('ELASTICSEARCH', 'host'),
+                config.get('TOMCAT', 'port'),
+                config.get('ELASTICSEARCH', 'path'))
+            self.search_index = Elasticsearch(es_path)
         self.triplestore = TripleStore(config)
         self.body = None
 
@@ -426,10 +426,13 @@ class Repository(object):
         Arguments:
             config -- Configuration object
         """
-        self.fedora = config['FEDORA']
+        self.fedora = "http://{}:{}/{}".format(
+            config.get('DEFAULT', 'host'),
+            config.get('TOMCAT', 'port'),
+            config.get('FEDORA', 'path'))
         self.search = Search(config)
-        admin = self.fedora.get('username', None)
-        admin_pwd = self.fedora.get('password', None)
+        admin = config.get('FEDORA', 'username', fallback=None)
+        admin_pwd = config.get('FEDORA', 'password', fallback=None)
         self.config = config
 
 
