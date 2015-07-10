@@ -222,6 +222,7 @@ class Search(object):
     """Search Repository"""
 
     def __init__(self, config):
+        self.search_index = None
         if 'ELASTICSEARCH' in config:
             options = {"host": config["ELASTICSEARCH"]["host"],
                        "port": config["ELASTICSEARCH"]["port"]}
@@ -334,7 +335,16 @@ class Search(object):
             raise falcon.HTTPMissingParam("field")
         value = kwargs.get('value')
         if not value:
-            raise falcon.HTTPMissingParam("field")
+            raise falcon.HTTPMissingParam("value")
+        print("Before Update in Searcher")
+        if self.triplestore:
+            result = self.triplestore.__get_subject__(uuid=doc_id)
+            self.triplestore.__update_triple__(
+                str(result),
+                field,
+                value)
+        if not self.search_index:
+            return
         for row in self.search_index.indices.stats()['indices'].keys():
             # Doc id should be unique across all indices 
             if self.search_index.exists(index=row, id=doc_id): 
@@ -351,12 +361,6 @@ class Search(object):
             body={"doc": {
                 field: self.__get_id_or_value__(value)
             }})
-        result = self.triplestore.__get_subject__(uuid=doc_id)
-        if len(result) == 1:
-            self.triplestore.__update_triple__(
-                result[0]['subject']['value'], 
-                field, 
-                value)         
             
 
     def on_get(self, req, resp):
