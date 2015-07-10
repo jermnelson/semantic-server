@@ -6,13 +6,17 @@ and [Fuseki][FUSEKI] for managing Linked Data
 artifacts by memory and cultural heritage institutions. 
 .
 
+A Docker image for this REST API is available at 
+(https://registry.hub.docker.com/u/jermnelson/semantic-server-api).
+
 ## Components
 
 *   [Fedora Commons Digital Repository][FEDORA] as Linked Data platform.
 *   [Elasticsearch][ES] for searching
-*   [Fuseki][FUSEKI] as SPARQL endpoint
+*   [Fuseki][FUSEKI] or [Blazegraph][BLAZE] as a SPARQL endpoint
 *   [Redis][REDIS] for result caching and analytics
 
+[BLAZE]: http://www.blazegraph.com/bigdata
 [ES]: http://www.elasticsearch.org/
 [FALCON]: http://falconframework.org/
 [FEDORA]: http://fedora-commons.org
