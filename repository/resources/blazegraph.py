@@ -8,7 +8,7 @@ class TripleStore(object):
 
     def __init__(self, config={}):
         self.config = config
-        self.url = "http://{}:{}/{}".format(
+        self.url = "http://{}:{}/{}/sparql".format(
             config.get("BLAZEGRAPH", 'host'),
             config.get('TOMCAT', 'port'),
             config.get("BLAZEGRAPH", 'path'))
