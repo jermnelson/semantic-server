@@ -426,7 +426,7 @@ class Repository(object):
         Arguments:
             config -- Configuration object
         """
-        self.fedora = "http://{}:{}/{}".format(
+        self.fedora = "http://{}:{}{}".format(
             config.get('DEFAULT', 'host'),
             config.get('TOMCAT', 'port'),
             config.get('FEDORA', 'path'))
