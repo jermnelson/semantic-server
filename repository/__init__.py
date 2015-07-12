@@ -293,6 +293,7 @@ class Search(object):
 
 
     def __index__(self, subject, graph, doc_type, index, prefix=None): 
+        print("Before search index call {}".format(self.search_index.count()))
         self.__generate_body__(graph, prefix)
         doc_id = str(subject).split("/")[-1]
         self.__generate_suggestion__(subject, graph, doc_id)
@@ -333,6 +334,18 @@ class Search(object):
         field = kwargs.get('field')
         if not field:
             raise falcon.HTTPMissingParam("field")
+        if result.status_code < 400:
+            bindings = result.json().get('results').get('bindings')
+            if len(bindings) > 0:
+                return bindings[0]['subject']['value']
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to match query in Fuseki",
+                "Predicate={} Object={} Type={}\nError:\n{}".format(
+                    predicate,
+                    object_,
+                    type_,
+                    result.text))
         value = kwargs.get('value')
         if not value:
             raise falcon.HTTPMissingParam("value")
@@ -426,10 +439,12 @@ class Repository(object):
         Arguments:
             config -- Configuration object
         """
-        self.fedora = "http://{}:{}{}".format(
+        self.fedora = "http://{}:{}".format(
             config.get('DEFAULT', 'host'),
-            config.get('TOMCAT', 'port'),
-            config.get('FEDORA', 'path'))
+            config.get('TOMCAT', 'port'))
+        if not self.fedora.endswith("/"):
+            self.fedora += "/"
+        self.fedora += config.get('FEDORA', 'path')
         self.search = Search(config)
         admin = config.get('FEDORA', 'username', fallback=None)
         admin_pwd = config.get('FEDORA', 'password', fallback=None)

@@ -136,6 +136,7 @@ Fedora object {} already exists""".format(self.uuid)
         self.uuid = resource_url.split("/")[-1]
         if index:
             self.searcher.__index__(self.subject, self.graph, doc_type, index)
+        print("Size of index {}".format(self.searcher.search_index.count()))
         self.searcher.triplestore.__load__(self.graph)
         return resource_url
 

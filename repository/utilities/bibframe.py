@@ -167,7 +167,7 @@ class Ingester(GraphIngester):
                                            graph=cover_art_graph,
                                            base_url=self.base_url)
             cover_art = Resource(self.config, self.searcher)
-            # Currently default mimetype for these covers is image/jpeg
+            # Currently default mimetype for these covershttp://li-b82p6v1-1208:8080/ is image/jpeg
             cover_art_url = cover_art.__create__(
                 rdf=cover_art_graph, 
                 binary=raw_image, 
@@ -181,13 +181,12 @@ class Ingester(GraphIngester):
         existing_uri = self.searcher.triplestore.__sameAs__(str(subject))
         if existing_uri:
             subject = rdflib.URIRef(existing_uri)
-        
         fedora_url, new_graph = self.__add_or_get_graph__(
             subject=subject, 
             graph=graph,
-            graph_type=bf_type)#,
-            #doc_type=guess_search_doc_type(graph, subject),
-            #index='bibframe')
+            graph_type=bf_type,
+            doc_type=guess_search_doc_type(graph, subject),
+            index='bibframe')
         subject_uri = rdflib.URIRef(fedora_url)
         return subject_uri
 

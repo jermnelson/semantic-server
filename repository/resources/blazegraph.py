@@ -14,6 +14,13 @@ class TripleStore(object):
             config.get("BLAZEGRAPH", 'path'))
 
 
+    def __get_id__(self, fedora_url):
+        fedora_parts = fedora_url.split("/")
+        if fedora_parts[-1].endswith("metdata"):
+            return fedora_parts[-2]
+        return fedora_parts[-1]
+           
+
     def __get_subject__(self, **kwargs):
         predicate = kwargs.get('predicate', 'owl:sameAs')
         if 'uuid' in kwargs:
@@ -45,6 +52,32 @@ class TripleStore(object):
         # Now return a list of subjects
         return [r.get('subject').get('value') for r in bindings]                                
       
+    def __sameAs__(self, url):
+        """Internal method takes a url and attempts to retrieve any existing
+        subjects with the equivalent owl:sameAs 
+
+        Args:
+            url -- Subject URL
+        """
+        if URL_CHECK_RE.search(url):
+            object_str = "<{}>".format(url)
+        else: # Test as a string literal
+            object_str = """"{}"^^xsd:string""".format(url)       
+        sparql = SAME_AS_SPARQL.format(object_str)  
+        result = requests.post(
+            self.url, 
+            data={"query": sparql, 
+                  "format": "json"})
+        
+        if result.status_code < 400:
+            result_json = result.json()
+            if len(result_json.get('results').get('bindings')) > 0:
+                return result_json['results']['bindings'][0]['subject']['value']
+        else:
+             raise falcon.HTTPInternalServerError(
+                "Failed to run sameAs query in Blazegraph",
+                "URL={}\nError {}:\n{}".format(url, result.status_code, result.text))
+        return
                     
 
     def __load__(self, rdf):
@@ -77,6 +110,19 @@ class TripleStore(object):
                                object_, 
                                type_),
                   "format": "json"})
+        if result.status_code < 400:
+            bindings = result.json().get('results').get('bindings')
+            if len(bindings) > 0:
+                return bindings[0]['subject']['value']
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to match query in Blazegraph",
+                "Predicate={} Object={} Type={}\nError:\n{}".format(
+                    predicate,
+                    object_,
+                    type_,
+                    result.text))
+
        
     def __update_triple__(self, subject, predicate, object_):
         """Internal method updates a subject, predicate, and object in Fuseki

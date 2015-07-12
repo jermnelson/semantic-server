@@ -99,7 +99,7 @@ class GraphIngester(object):
         graph = kwargs.get('graph', self.graph)
         graph_type = kwargs.get('graph_type')
         new_graph = default_graph()
-        subject = kwargs.get('subject') 
+        subject = kwargs.get('subject')
         for predicate, object_ in graph.predicate_objects(
                                       subject=subject):
             if self.dedup_predicates.count(predicate) > 0:
