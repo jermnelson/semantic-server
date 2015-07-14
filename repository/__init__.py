@@ -224,11 +224,14 @@ class Search(object):
     def __init__(self, config):
         self.search_index = None
         if 'ELASTICSEARCH' in config:
-            es_path = "{}:{}/{}".format(
+            es_path = "{}:{}".format(
                 config.get('ELASTICSEARCH', 'host'),
-                config.get('TOMCAT', 'port'),
-                config.get('ELASTICSEARCH', 'path'))
+                config.get('ELASTICSEARCH', 'port'))
+            if 'path' in config['ELASTICSEARCH']:
+                es_path += "/{}".format(config.get('ELASTICSEARCH', 'path'))
             self.search_index = Elasticsearch(es_path)
+        else: # Defaults to localhost 9200
+            self.search_index = Elasticsearch()
         self.triplestore = TripleStore(config)
         self.body = None
 
@@ -293,7 +296,6 @@ class Search(object):
 
 
     def __index__(self, subject, graph, doc_type, index, prefix=None): 
-        print("Before search index call {}".format(self.search_index.count()))
         self.__generate_body__(graph, prefix)
         doc_id = str(subject).split("/")[-1]
         self.__generate_suggestion__(subject, graph, doc_id)
@@ -349,7 +351,6 @@ class Search(object):
         value = kwargs.get('value')
         if not value:
             raise falcon.HTTPMissingParam("value")
-        print("Before Update in Searcher")
         if self.triplestore:
             result = self.triplestore.__get_subject__(uuid=doc_id)
             self.triplestore.__update_triple__(
