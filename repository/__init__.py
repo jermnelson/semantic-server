@@ -251,6 +251,8 @@ class Search(object):
         elif '@id' in value:
             result = self.triplestore.__get_id__(value.get('@id'))
             if len(result) > 0:
+                if type(result) == str:
+                    return result
                 return result[0]['uuid']['value']
             return value.get('@id')
         return value
