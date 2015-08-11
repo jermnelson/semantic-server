@@ -93,10 +93,12 @@ class GraphIngester(object):
             graph_type -- Graph type to dedup
             index -- Elastic search index, defaults to None    
             doc_type -- Elastic search doc type for graph, defaults to None
+            local -- Boolean, capture internal URIs into graph defaults to False 
         """ 
         doc_type=kwargs.get('doc_type', None)
         index=kwargs.get('index', None)
         graph = kwargs.get('graph', self.graph)
+        local = kwargs.get('local', False)
         graph_type = kwargs.get('graph_type')
         new_graph = default_graph()
         subject = kwargs.get('subject')
@@ -125,7 +127,8 @@ class GraphIngester(object):
             rdf=new_graph, 
             subject=subject, 
             doc_type=doc_type,
-            index=index
+            index=index,
+            local=local
         )
         return resource_url, default_graph().parse(resource_url)
 

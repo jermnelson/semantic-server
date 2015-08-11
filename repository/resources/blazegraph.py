@@ -51,6 +51,58 @@ class TripleStore(object):
             return bindings[0].get('subject').get('value')
         # Now return a list of subjects
         return [r.get('subject').get('value') for r in bindings]                                
+
+    def __get_fedora_local__(self, local_url):
+        result = requests.post(
+            self.url,
+            data={"query": LOCAL_SUBJECT_PREDICATES_SPARQL.format(local_url),
+                  "format": "json"})
+        if result.status_code < 400:
+            return result.json().get('results').get('bindings')
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to return all Fedora URLs",
+                "Local URL={}\nError: {}".format(
+                    local_url,
+                    result.text))
+
+
+    def __replace_object__(self, subject, predicate, old_object, new_object):
+        """Internal method attempts to replace an existing triple's object with
+        a new object
+
+        Args:
+           subject -- rdflib.URIRef
+           predicate -- rdflib.URIRef
+           old_object -- rdflib.URIRef or rdflib.Literal
+           new_object -- rdflib.URIRef or rdflib.Literal
+        """
+        def get_string_rep(object_):
+            if type(object_) == rdflib.URIRef:
+                return '<{}>'.format(object_)
+            elif type(object_) == rdflib.Literal:
+                return '"{}"'.format(object_)
+        sparql = REPLACE_OBJECT_SPARQL.format(
+            subject,
+            get_string_rep(predicate),
+            get_string_rep(old_object),
+            get_string_rep(new_object))
+        result = requests.post(
+            self.url,
+            data={"update": sparql, "output": "json"})
+        if result.status_code < 400:
+            return True
+        else:
+            raise falcon.HTTPInternalServerError(
+                "Failed to replace triple's object",
+                "Error:\n{}\nSubject:{}\tPredicate:{}\tOld Obj:{}\tNew Obj:{}".format(
+                    result.text,
+                    subject,
+                    predicate,
+                    old_object,
+                    new_object))
+
+
       
     def __sameAs__(self, url):
         """Internal method takes a url and attempts to retrieve any existing

@@ -120,14 +120,14 @@ def ingest_resource(req, resp, resource):
     graph = rdflib.Graph().parse(body['uri'])
     TripleStore(resource.config).__load__(fuseki_sparql)
 
-def ingest_turtle(graph, localhost=False):
+def ingest_turtle(graph, local=False):
     subjects = [s for s in set(graph.subjects())]
     subject = subjects[0]
     try: 
         raw_turtle = graph.serialize(format='turtle').decode()
         turtle = raw_turtle.replace("<{}>".format(subject), "<>")
         turtle = turtle[:-3]
-        if type(subject) == rdflib.URIRef and localhost:
+        if type(subject) == rdflib.URIRef and local:
             turtle += ";\n    owl:sameAs <{}> .\n\n".format(subject)
     except:
         turtle = ""

@@ -186,7 +186,8 @@ class Ingester(GraphIngester):
             graph=graph,
             graph_type=bf_type,
             doc_type=guess_search_doc_type(graph, subject),
-            index='bibframe')
+            index='bibframe',
+            local=True)
         subject_uri = rdflib.URIRef(fedora_url)
         return subject_uri
 
