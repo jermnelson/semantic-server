@@ -136,7 +136,7 @@ Fedora object {} already exists""".format(self.uuid)
         self.uuid = resource_url.split("/")[-1]
         if index:
             self.searcher.__index__(self.subject, self.graph, doc_type, index)
-        self.searcher.triplestore.__load__(self.graph)
+        #self.searcher.triplestore.__load__(self.graph)
         return resource_url
 
     def __new_by_rdf__(self, post_url, rdf, rdf_type, local):

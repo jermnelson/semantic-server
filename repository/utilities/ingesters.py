@@ -148,12 +148,12 @@ class GraphIngester(object):
                 subject = row['subject']['value']
                 repository_result = fedora.replace_property(
                     subject, predicate, local_url, fedora_url)
-                if not self.searcher.triplestore.__replace_object__(
-                    subject,
-                    rdflib.URIRef(predicate),
-                    rdflib.URIRef(local_url),
-                    rdflib.URIRef(fedora_url)):
-                    print("Could not update triplestore with fedora urls")
+#                if not self.searcher.triplestore.__replace_object__(
+#                    subject,
+#                    rdflib.URIRef(predicate),
+#                    rdflib.URIRef(local_url),
+#                    rdflib.URIRef(fedora_url)):
+#                    print("Could not update triplestore with fedora urls")
                 
 
     def __get_types__(self, subject, startstr, prefix):
