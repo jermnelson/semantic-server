@@ -108,7 +108,29 @@ WHERE {{
                 return "{}://{}".format(url.scheme, url.netloc)
 
 
-class Ingester(GraphIngester):
+class Ingester(object):
+
+    def __init__(self, **kwargs):
+        self.graph = kwargs.get('graph')
+        if not 'base_url' in kwargs:
+            self.base_url = get_base_url(self.graph) 
+        self.subjects = subjects_list(self.graph, self.base_url)
+
+        self.dedup_predicates = [ 
+            BF.authorizedAccessPoint, 
+            BF.identifierValue,
+            BF.classificationNumber,
+            BF.label, 
+            RDFS.label,
+            BF.titleValue]
+        
+
+        
+    def ingest(self):
+        pass
+
+    
+class OldIngester(GraphIngester):
 
     def __init__(self, **kwargs):
         if not 'search' in kwargs:
