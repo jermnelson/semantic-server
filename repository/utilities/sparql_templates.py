@@ -16,6 +16,8 @@ WHERE {{{{
     ?subject rdf:type <{{}}> .
 }}}}""".format(PREFIX)
 
+
+
 GET_ID_SPARQL = """{}
 SELECT ?uuid
 WHERE {{{{

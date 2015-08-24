@@ -27,6 +27,7 @@ from .ingesters import default_graph, GraphIngester, subjects_list
 from .. import CONTEXT, Search, generate_prefix
 from ..resources.fedora import Resource
 from .namespaces import *
+from .sparql_templates import *
 from .cover_art import by_isbn
 
 logging.basicConfig(filename='bibframe-error.log',
@@ -46,12 +47,19 @@ WHERE {{
   ?cover bf:coverArtFor ?instance .
 }}""".format(PREFIX)
 
+DEDUP_AUTH_ACCESS_PT_SPARQL = """SELECT DISTINCT ?resource ?value ?type
+WHERE {
+  ?resource bf:authorizedAccessPoint ?value .
+  ?resource rdf:type ?type .
+}""" 
 
 GET_SLICE_SUBJECTS_SPARQL = """{}
 SELECT DISTINCT ?subject ?uuid
 WHERE {{{{
    ?subject fedora:uuid ?uuid .
 }}}} LIMIT {{}} OFFSET {{}}""".format(PREFIX)
+
+
 
 def guess_search_doc_type(graph, fcrepo_uri):
     """Function takes a graph and attempts to guess the Doc type for ingestion
@@ -114,20 +122,124 @@ class Ingester(object):
         self.graph = kwargs.get('graph')
         if not 'base_url' in kwargs:
             self.base_url = get_base_url(self.graph) 
-        self.subjects = subjects_list(self.graph, self.base_url)
-
-        self.dedup_predicates = [ 
-            BF.authorizedAccessPoint, 
-            BF.identifierValue,
-            BF.classificationNumber,
-            BF.label, 
-            RDFS.label,
-            BF.titleValue]
+        self.triplestore_url = kwargs.get(
+            'triplestore_url', 
+            'http://localhost:8080/bigdata/sparql')
+        self.fedora_rest_url = kwargs.get(
+            "fedora_url",
+            "http://localhost:8080/fedora/rest")
+        self.indexer = kwargs.get("indexer", 
+                                  Elasticsearch("localhost:9200"))
         
+       
+    def __add_rdfs_label__(self, graph):
+        pass
+ 
+    def __dedup_authAccessPoint__(self):
+        access_point_query = self.graph.query(DEDUP_AUTH_ACCESS_PT_SPARQL)
+        for row in access_point_query:
+            local_subject, access_point, bf_type = row
+            result = requests.post(
+                self.triplestore_url,
+                data={"query": DEDUP_SPARQL.format(
+                                   BF.authorizedAccessPoint,
+                                   access_point, 
+                                   bf_type),
+                      "format": "json"})
+            if result.status_code < 400:
+                bindings = result.json().get('results').get('bindings')
+                if len(bindings) == 1:
+                    subject = rdflib.URIRef(bindings[0].get("resource").get('@value'))
+                    print(subject)
+                    if local_subject == subject:
+                        continue
+                    self.__filter_local__(local_subject, subject)
+                           
+            
+            
+    def __dedup_rdfs_label__(self):
+        pass          
 
+    def __index__(self, graph):
+        pass
+        
+    def __get_id_or_value__(self, value):
+        """Helper function takes a dict with either a value or id and returns
+        the dict value
+
+        Args:
+	    value(dict)
+        Returns:
+	    string or None
+        """
+        if [str, float, int, bool].count(type(value)) > 0:
+            return value 
+        elif '@value' in value:
+            return value.get('@value')
+        elif '@id' in value:
+            result = requests.post(self.triplestore_url,
+                data={"sparql": value.get('@id'))
+            if len(result) > 0:
+                if type(result) == str:
+                    return result
+                return result[0]['uuid']['value']
+            return value.get('@id')
+        return value
+
+
+    def __filter_local__(self, local_subject, subject):
+        # Remove each occurrence of local_subject in graph
+        for predicate, object_ in self.graph.predicate_objects(
+            subject=local_subject):
+            self.graph.remove((local_subject, predicate, object_))
+            if local_subject != subject:
+                self.graph.add((subject, predicate, object_))
+        # Replace any objects with new subject in graph
+        for ref_subject, predicate in self.graph.subject_predicates(
+            object=local_subject):
+            self.graph.remove((ref_subject, predicate, local_subject))
+            self.graph.add((ref_subject, predicate, subject))
+
+
+    def deduplication(self, permissive=False):
+        """Runs local dedup on only those resources with BF.authorizedAccessPoint
+        BF.classificationNumber, or BF.identifier value. If permissive, includes
+        search on RDFS.label"""
+        self.__dedup_authAccessPoint__()
+        if permissive:
+            self.__dedup_rdfs_label__()
+      
+    def initialize_subjects(self):
+        subjects = set([s for s in self.graph.subjects()])
+        for local_subject in subjects:
+            # Creates a stub Fedora RDF Resource
+            subject_result = requests.post(self.fedora_rest_url)
+            if subject_result.status_code < 400:
+                subject = rdflib.URIRef(subject_result.text)
+                self.__filter_local__(local_subject, subject)
+
+    
         
     def ingest(self):
-        pass
+        self.deduplication()
+        self.initialize_subjects()
+        subjects = set([s for s in self.graph.subjects()])
+        for subject in subjects:
+            subject_graph = default_graph()
+            subject_url = str(subject)
+            subject_graph.parse(subject_url)
+            for p,o in self.graph[subject]:
+                subject_graph.add((subject, p, o))
+            self.__add_rdfs_label__(subject_graph)
+            put_result = requests.put(subject_url,
+                data=subject_graph.serialize(format='turtle'),
+                headers={"Content-Type": "text/turtle"})
+            self.__index__(subject_graph)
+            if put_result.status_code > 399:
+                print("Error {}\n{}".format(put_result.status_code, put_result.text))
+       
+            
+            
 
     
 class OldIngester(GraphIngester):
