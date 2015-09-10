@@ -107,6 +107,7 @@ Fedora object {} already exists""".format(self.uuid)
         mimetype = kwargs.get('mimetype', 'application/octet-stream')
         rdf = kwargs.get('rdf', None)
         rdf_type = kwargs.get('rdf_type', 'text/turtle') 
+        local = kwargs.get('local', False)
         resource_url = None
         if ident:
             fedora_post_url = "/".join([self.rest_url, ident])
@@ -118,7 +119,8 @@ Fedora object {} already exists""".format(self.uuid)
             resource_url = self.__new_by_rdf__(
                 fedora_post_url, 
                 rdf, 
-                rdf_type )
+                rdf_type,
+                local)
         else:
              stub_result = requests.post(
                  fedora_post_url)
@@ -135,13 +137,13 @@ Fedora object {} already exists""".format(self.uuid)
         self.uuid = resource_url.split("/")[-1]
         if index:
             self.searcher.__index__(self.subject, self.graph, doc_type, index)
-        self.searcher.triplestore.__load__(self.graph)
+        #self.searcher.triplestore.__load__(self.graph)
         return resource_url
 
-    def __new_by_rdf__(self, post_url, rdf, rdf_type):
+    def __new_by_rdf__(self, post_url, rdf, rdf_type, local):
         # If rdf is a rdflib.Graph, attempt to serialize
         if type(rdf) == rdflib.Graph:
-            rdf = ingest_turtle(rdf)
+            rdf = ingest_turtle(rdf, local)
             rdf_type = 'text/turtle'
         rdf_result = requests.post(
                 post_url,
