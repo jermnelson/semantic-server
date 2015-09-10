@@ -112,6 +112,7 @@ Fedora object {} already exists""".format(self.uuid)
             fedora_post_url = "/".join([self.rest_url, ident])
         else:
             fedora_post_url = self.rest_url
+        print("Fedora post url is {}".format(fedora_post_url))
         # Handle any RDF
         if rdf:
             resource_url = self.__new_by_rdf__(

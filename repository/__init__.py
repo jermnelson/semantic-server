@@ -443,7 +443,7 @@ class Repository(object):
             config -- Configuration object
         """
         self.fedora = "http://{}:{}".format(
-            config.get('DEFAULT', 'host'),
+            config.get('TOMCAT', 'host'),
             config.get('TOMCAT', 'port'))
         if not self.fedora.endswith("/"):
             self.fedora += "/"
