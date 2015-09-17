@@ -4,14 +4,32 @@ import datetime
 import falcon
 import logging
 import rdflib
+import requests
 import sys
 import urllib.parse
 
 from .. import CONTEXT, INDEXING, RDF, Search, default_graph
 from ..resources import fedora
-from ..resources.fuseki import TripleStore
 from .namespaces import *
 
+class SimpleIngester(object):
+
+    def __init__(self, 
+                 fedora_rest_url = 'http://localhost:8080/fedora/rest'):
+        self.fedora_rest_url = fedora_rest_url
+
+    def ingest(self, graph):
+        fedora_result = requests.post(self.fedora_rest_url)
+        if fedora_result.status_code < 400:
+            fedora_iri = rdflib.URIRef(fedora_result.text)
+            new_graph = default_graph()
+            new_graph.parse(str(fedora_iri))
+            for predicate, object_ in graph.predicate_objects():
+                new_graph.add((fedora_iri, predicate, object_))
+            fedora_update = requests.put(
+                str(fedora_iri),
+                data=new_graph.serialize(format='turtle'),
+                headers={"Content-Type": "text/turtle"})
 
 def valid_uri(uri):
     """function takes a rdflib.URIRef and checks if it is valid for 
